@@ -34,6 +34,7 @@ def start_server(host, port):
                     print(f"Received by {data}")
                     conn.sendall(b"peer: " + data)
 
+# We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
 t = Thread(target=ui, args=[PEER_HOST, PEER_PORT])
 t.start()
 
