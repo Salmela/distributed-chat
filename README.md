@@ -25,7 +25,7 @@ git add -p
 
 ## Testing locally
 
-Startup 2 peers. It will fist fetch the base image for python and then build our image and finally startup the conatiners.
+Startup 2 peers. It will first fetch the base image for python and then build our image and finally startup the conatiners.
 
 ```
 docker-compose up -d
