@@ -2,10 +2,10 @@ version: '2.1'
 
 services:
   peer1:
-    image: distributed-chat:latest
+    build: ./
     volumes:
       - ./:/usr/src/app:ro
   peer2:
-    image: distributed-chat:latest
+    build: ./
     volumes:
       - ./:/usr/src/app:ro
