@@ -2,6 +2,7 @@
 
 import socket
 import sys
+import json
 from threading import Thread
 
 HOST = "0.0.0.0"
@@ -15,7 +16,7 @@ def ui(peer_host, peer_port):
         message = input("viestisi: ")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((peer_host, peer_port))
-            s.sendall(message.encode())
+            s.sendall(json.dumps({"message": message}).encode())
             data = s.recv(1024)
 
             print(f"Received {data!r}")
@@ -32,7 +33,7 @@ def start_server(host, port):
                     if not data:
                         break
                     print(f"Received by {data}")
-                    conn.sendall(b"peer: " + data)
+                    conn.sendall(data)
 
 # We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
 t = Thread(target=ui, args=[PEER_HOST, PEER_PORT])
