@@ -5,11 +5,12 @@ import sys
 import json
 from threading import Thread
 
-HOST = "0.0.0.0"
-HOST_PORT = int(sys.argv[1])
+if len(sys.argv) < 2:
+    print(f"Usage: {sys.argv[0]} PEER_HOSTNAME")
+    exit(-1)
 
-PEER_HOST = sys.argv[2] # svm-11-3.cs.helsinki.fi
-PEER_PORT = int(sys.argv[3]) # 65412
+APPLICATION_PORT = 65412
+PEER_HOST = sys.argv[1] # svm-11-3.cs.helsinki.fi
 
 def ui(peer_host, peer_port):
     while True:
@@ -21,9 +22,9 @@ def ui(peer_host, peer_port):
 
             print(f"Received {data!r}")
 
-def start_server(host, port):
+def start_server(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((HOST, HOST_PORT))
+        s.bind(("0.0.0.0", APPLICATION_PORT))
         s.listen()
         while True:
             conn, addr = s.accept()
@@ -36,8 +37,8 @@ def start_server(host, port):
                     conn.sendall(data)
 
 # We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
-t = Thread(target=ui, args=[PEER_HOST, PEER_PORT])
+t = Thread(target=ui, args=[PEER_HOST, APPLICATION_PORT])
 t.start()
 
-t = Thread(target=start_server, args=[HOST, HOST_PORT])
+t = Thread(target=start_server, args=[APPLICATION_PORT])
 t.start()
