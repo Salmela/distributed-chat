@@ -1,4 +1,4 @@
-iname: Testing
+name: Testing
 run-name: ${{ github.actor }} is adding new improvements 🚀
 on: [push]
 jobs:
