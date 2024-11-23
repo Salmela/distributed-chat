@@ -29,12 +29,12 @@ After the containers are running, startup our project in the containers manually
 
 ```
 docker-compose exec peer1 bash
-./main.py 123 peer2 123
+./main.py peer2
 ```
 And on another terminal run
 ```
 docker-compose exec peer2 bash
-./main.py 123 peer1 123
+./main.py peer1
 ```
 
 The containers mount the project directory inside them so all the changes you do will be immediately available containers. You just need to restart the main python script file.
