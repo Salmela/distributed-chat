@@ -3,9 +3,11 @@
 from socket import AF_INET, SOCK_STREAM, socket as os_socket
 import sys
 import json
+import queue
 from threading import Thread
 
 APPLICATION_PORT = 65412
+message_queue = queue.Queue()
 
 def ui(peer_host, peer_port, input=input, socket=os_socket):
     while True:
@@ -15,6 +17,7 @@ def ui(peer_host, peer_port, input=input, socket=os_socket):
             s.sendall(json.dumps({"message": message}).encode())
             data = s.recv(1024)
 
+            print()
             print(f"Received {data!r}")
 
 def start_server(socket=os_socket):
@@ -28,8 +31,13 @@ def start_server(socket=os_socket):
                     data = conn.recv(1024)
                     if not data:
                         break
+                    print()
                     print(f"Received by {data}")
-                    conn.sendall(data)
+                    message_queue.put(data)
+
+                    if not message_queue.empty():
+                        message = message_queue.get()
+                        conn.sendall(message)
 
 # Only run this code if the file was executed from command line
 if __name__ == '__main__':
