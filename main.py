@@ -1,6 +1,6 @@
 #!/bin/python3
 
-from socket import socket as os_socket
+from socket import AF_INET, SOCK_STREAM, socket as os_socket
 import sys
 import json
 from threading import Thread
@@ -10,7 +10,7 @@ APPLICATION_PORT = 65412
 def ui(peer_host, peer_port, input=input, socket=os_socket):
     while True:
         message = input("viestisi: ")
-        with socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        with socket(AF_INET, SOCK_STREAM) as s:
             s.connect((peer_host, peer_port))
             s.sendall(json.dumps({"message": message}).encode())
             data = s.recv(1024)
@@ -18,7 +18,7 @@ def ui(peer_host, peer_port, input=input, socket=os_socket):
             print(f"Received {data!r}")
 
 def start_server(socket=os_socket):
-    with socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    with socket(AF_INET, SOCK_STREAM) as s:
         s.bind(("0.0.0.0", APPLICATION_PORT))
         s.listen()
         while True:
