@@ -33,7 +33,7 @@ class ServerTestCase(unittest.TestCase):
         mock_socket_factory.return_value.__enter__.return_value = server_socket
 
         with self.assertRaises(KeyboardInterrupt):
-            start_server(socket=mock_socket_factory)
+            start_server('321.321.321.321', socket=mock_socket_factory)
 
         server_socket.bind.assert_called_with(('0.0.0.0', 65412))
         server_socket.listen.assert_called_with()

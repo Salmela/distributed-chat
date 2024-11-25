@@ -28,7 +28,7 @@ def ui(peer_host, peer_port, input=input, socket=os_socket):
         logger.exception(exc)
         raise exc
 
-def start_server(socket=os_socket):
+def start_server(peer_host, socket=os_socket):
     try:
         with socket(AF_INET, SOCK_STREAM) as s:
             s.bind(("0.0.0.0", APPLICATION_PORT))
@@ -65,5 +65,5 @@ if __name__ == '__main__':
     t = Thread(target=ui, args=[peer_host, APPLICATION_PORT])
     t.start()
 
-    t = Thread(target=start_server, args=[])
+    t = Thread(target=start_server, args=[peer_host])
     t.start()
