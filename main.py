@@ -16,7 +16,6 @@ def ui(peer_host, peer_port, input=input, socket=os_socket):
     try:
         while True:
             message = input("viestisi: ")
-            logger.debug(f"Sent by {peer_host}: {message}")
             with socket(AF_INET, SOCK_STREAM) as s:
                 s.connect((peer_host, peer_port))
                 s.sendall(json.dumps({"message": message}).encode())
@@ -24,7 +23,7 @@ def ui(peer_host, peer_port, input=input, socket=os_socket):
 
                 print()
                 print(f"Received {data!r}")
-                logger.debug(f"Received by {peer_host}: {data}")
+                logger.debug(f"Sent by {peer_host}: {data}")
     except Exception as exc:
         logger.exception(exc)
         raise exc
@@ -43,6 +42,7 @@ def start_server(socket=os_socket):
                             break
                         print()
                         print(f"Received by {data}")
+                        logger.debug(f"Received by {peer_host}: {data}")
                         message_queue.put(data)
 
                         if not message_queue.empty():
