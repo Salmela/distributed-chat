@@ -9,12 +9,12 @@ from threading import Thread
 APPLICATION_PORT = 65412
 message_queue = queue.Queue()
 
-def ui(peer_host, peer_port, input=input, socket=os_socket):
+def ui(peer_host, peer_port, nickname, input=input, socket=os_socket):
     while True:
         message = input("viestisi: ")
         with socket(AF_INET, SOCK_STREAM) as s:
             s.connect((peer_host, peer_port))
-            s.sendall(json.dumps({"message": message}).encode())
+            s.sendall(json.dumps({"message": message, "sender":nickname}).encode())
             data = s.recv(1024)
 
             print()
@@ -48,8 +48,10 @@ if __name__ == '__main__':
 
     peer_host = sys.argv[1] # svm-11-3.cs.helsinki.fi
 
+    nickname = input("Set nickname: ")
+
     # We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
-    t = Thread(target=ui, args=[peer_host, APPLICATION_PORT])
+    t = Thread(target=ui, args=[peer_host, APPLICATION_PORT, nickname])
     t.start()
 
     t = Thread(target=start_server, args=[])
