@@ -9,3 +9,7 @@ services:
     build: ./
     volumes:
       - ./:/usr/src/app:ro
+  peer3:
+    build: ./
+    volumes:
+      - ./:/usr/src/app:ro
