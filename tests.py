@@ -23,7 +23,7 @@ class UserInterfaceTestCase(unittest.TestCase):
 class ServerTestCase(unittest.TestCase):
     def test_receive_connection(self):
         peer_socket = MagicMock()
-        peer_socket.recv.side_effect = [b'Nice message from peer', '']
+        peer_socket.recv.side_effect = [b'{"message": "Nice message from peer", "sender": "Rick"}', ""]
 
         server_socket = Mock()
         server_socket.accept.side_effect = [(peer_socket, None), KeyboardInterrupt]
@@ -33,11 +33,11 @@ class ServerTestCase(unittest.TestCase):
         mock_socket_factory.return_value.__enter__.return_value = server_socket
 
         with self.assertRaises(KeyboardInterrupt):
-            start_server('321.321.321.321', socket=mock_socket_factory)
+            start_server(socket=mock_socket_factory)
 
         server_socket.bind.assert_called_with(('0.0.0.0', 65412))
         server_socket.listen.assert_called_with()
-        peer_socket.sendall.assert_called_with(b'Nice message from peer')
+        peer_socket.sendall.assert_called_with(b'{"message": "Nice message from peer", "sender": "Rick"}')
 
 if __name__ == '__main__':
     unittest.main()

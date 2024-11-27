@@ -23,12 +23,12 @@ def ui(peer_host, peer_port, nickname, input=input, socket=os_socket):
 
                 print()
                 print(f"Received {data!r}")
-                logger.debug(f"Sent by {peer_host}: {data}")
+                logger.debug(f"Sent by {nickname}: {data}")
     except Exception as exc:
         logger.exception(exc)
         raise exc
 
-def start_server(peer_host, socket=os_socket):
+def start_server(socket=os_socket):
     try:
         with socket(AF_INET, SOCK_STREAM) as s:
             s.bind(("0.0.0.0", APPLICATION_PORT))
@@ -40,9 +40,10 @@ def start_server(peer_host, socket=os_socket):
                         data = conn.recv(1024)
                         if not data:
                             break
+                        message = json.loads(data)
                         print()
                         print(f"Received by {data}")
-                        logger.debug(f"Received by {peer_host}: {data}")
+                        logger.debug(f"Received by {message['sender']}: {message}")
                         message_queue.put(data)
 
                         if not message_queue.empty():
@@ -67,5 +68,5 @@ if __name__ == '__main__':
     t = Thread(target=ui, args=[peer_host, APPLICATION_PORT, nickname])
     t.start()
 
-    t = Thread(target=start_server, args=[peer_host])
+    t = Thread(target=start_server, args=[])
     t.start()
