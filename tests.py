@@ -15,10 +15,10 @@ class UserInterfaceTestCase(unittest.TestCase):
         mock_socket_factory.return_value.__enter__.return_value = socket_instance
 
         with self.assertRaises(KeyboardInterrupt):
-            ui('123.123.123.123', 456, input=mock_input, socket=mock_socket_factory)
+            ui('123.123.123.123', 456, nickname="Nick", input=mock_input, socket=mock_socket_factory)
 
         socket_instance.connect.assert_called_with(('123.123.123.123', 456))
-        socket_instance.sendall.assert_called_with(b'{"message": "Cool example message"}')
+        socket_instance.sendall.assert_called_with(b'{"message": "Cool example message", "sender": "Nick"}')
 
 class ServerTestCase(unittest.TestCase):
     def test_receive_connection(self):
