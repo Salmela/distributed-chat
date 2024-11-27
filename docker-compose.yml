@@ -4,12 +4,12 @@ services:
   peer1:
     build: ./
     volumes:
-      - ./:/usr/src/app:ro
+      - ./:/usr/src/app:rw
   peer2:
     build: ./
     volumes:
-      - ./:/usr/src/app:ro
+      - ./:/usr/src/app:rw
   peer3:
     build: ./
     volumes:
-      - ./:/usr/src/app:ro
+      - ./:/usr/src/app:rw
