@@ -12,18 +12,18 @@ message_queue = queue.Queue()
 logger = logging.getLogger(__name__)
 logging.basicConfig(filename=f"chat.log", level=logging.DEBUG, format="%(asctime)s - %(message)s")
 
-def ui(peer_host, peer_port, nickname, input=input, socket=os_socket):
+def ui(peer_hosts, peer_port, nickname, input=input, socket=os_socket):
     try:
         while True:
             message = input("viestisi: ")
-            with socket(AF_INET, SOCK_STREAM) as s:
-                s.connect((peer_host, peer_port))
-                s.sendall(json.dumps({"message": message, "sender":nickname}).encode())
-                data = s.recv(1024)
+            for peer_host in peer_hosts:
+                with socket(AF_INET, SOCK_STREAM) as s:
+                    s.connect((peer_host, peer_port))
+                    s.sendall(json.dumps({"message": message, "sender":nickname}).encode())
+                    data = s.recv(1024)
 
-                print()
-                print(f"Received {data!r}")
-                logger.debug(f"Sent by {nickname}: {data}")
+                    print()
+                    logger.debug(f"Sent by {nickname}: {data}")
     except Exception as exc:
         logger.exception(exc)
         raise exc
@@ -60,12 +60,12 @@ if __name__ == '__main__':
         print(f"Usage: {sys.argv[0]} PEER_HOSTNAME")
         exit(-1)
 
-    peer_host = sys.argv[1] # svm-11-3.cs.helsinki.fi
+    peer_hosts = sys.argv[1:] # svm-11-3.cs.helsinki.fi
 
     nickname = input("Set nickname: ")
 
     # We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
-    t = Thread(target=ui, args=[peer_host, APPLICATION_PORT, nickname])
+    t = Thread(target=ui, args=[peer_hosts, APPLICATION_PORT, nickname])
     t.start()
 
     t = Thread(target=start_server, args=[])
