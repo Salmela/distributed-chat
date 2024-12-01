@@ -60,8 +60,8 @@ class Node:
 # Only run this code if the file was executed from command line
 if __name__ == '__main__':
 
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} PEER_HOSTNAME")
+    if '--help' in sys.argv:
+        print(f"Usage: {sys.argv[0]} [PEER_1] [PEER_2] ...")
         exit(-1)
 
     peer_hosts = sys.argv[1:] # svm-11-3.cs.helsinki.fi
