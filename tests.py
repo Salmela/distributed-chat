@@ -19,13 +19,13 @@ class UserInterfaceTestCase(unittest.TestCase):
             node.ui(456, nickname="Nick", input=mock_input, socket=mock_socket_factory)
 
         socket_instance.connect.assert_called_with(('123.123.123.123', 456))
-        socket_instance.sendall.assert_called_with(b'{"message": "Cool example message", "sender": "Nick"}')
+        socket_instance.sendall.assert_called_with(b'{"type": "msg", "message": "Cool example message", "sender": "Nick"}')
 
 class ServerTestCase(unittest.TestCase):
     def test_receive_connection(self):
         node = Node([])
         peer_socket = MagicMock()
-        peer_socket.recv.side_effect = [b'{"message": "Nice message from peer", "sender": "Rick"}', ""]
+        peer_socket.recv.side_effect = [b'{"type": "msg", "message": "Nice message from peer", "sender": "Rick"}', ""]
 
         server_socket = Mock()
         server_socket.accept.side_effect = [(peer_socket, None), KeyboardInterrupt]
@@ -35,11 +35,11 @@ class ServerTestCase(unittest.TestCase):
         mock_socket_factory.return_value.__enter__.return_value = server_socket
 
         with self.assertRaises(KeyboardInterrupt):
-            node.start_server(socket=mock_socket_factory)
+            node.start_server(nickname="Rick", socket=mock_socket_factory)
 
         server_socket.bind.assert_called_with(('0.0.0.0', 65412))
         server_socket.listen.assert_called_with()
-        peer_socket.sendall.assert_called_with(b'{"message": "Nice message from peer", "sender": "Rick"}')
+        peer_socket.sendall.assert_called_with(b'{"type": "ack", "message": "Received Nice message from peer from Rick", "sender": "Rick"}')
 
 if __name__ == '__main__':
     unittest.main()

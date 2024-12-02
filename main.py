@@ -23,7 +23,7 @@ class Node:
                 for peer_host in self.peer_hosts:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.connect((peer_host, peer_port))
-                        s.sendall(json.dumps({"message": message, "sender":nickname}).encode())
+                        s.sendall(json.dumps({"type": "msg", "message": message, "sender": nickname}).encode())
                         data = s.recv(1024)
 
                         print()
@@ -32,7 +32,7 @@ class Node:
             logger.exception(exc)
             raise exc
 
-    def start_server(self, socket=os_socket):
+    def start_server(self, nickname, socket=os_socket):
         try:
             with socket(AF_INET, SOCK_STREAM) as s:
                 s.bind(("0.0.0.0", APPLICATION_PORT))
@@ -51,8 +51,11 @@ class Node:
                             self.message_queue.put(data)
 
                             if not self.message_queue.empty():
-                                message = self.message_queue.get()
-                                conn.sendall(message)
+                                msg = self.message_queue.get()
+
+                                ack = bytes(json.dumps({"type": "ack", "message": f"Received {message['message']} from {message['sender']}", "sender": nickname}), encoding='utf-8')
+                                conn.sendall(ack)
+                                logger.debug(f"{nickname} sent ack {ack}")
         except Exception as exc:
             logger.exception(exc)
             raise exc
@@ -73,5 +76,5 @@ if __name__ == '__main__':
     t = Thread(target=node.ui, args=[APPLICATION_PORT, nickname])
     t.start()
 
-    t = Thread(target=node.start_server, args=[])
+    t = Thread(target=node.start_server, args=[nickname])
     t.start()
