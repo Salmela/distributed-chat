@@ -54,7 +54,7 @@ class Node:
                             if not self.message_queue.empty():
                                 msg = self.message_queue.get()
 
-                                ack = bytes(json.dumps({"type": "ack", "message": f"Received {message['message']} from {message['sender']}", "sender": self.nickname}), encoding='utf-8')
+                                ack = json.dumps({"type": "ack", "message": f"Received {message['message']} from {message['sender']}", "sender": self.nickname}).encode()
                                 conn.sendall(ack)
                                 logger.debug(f"{self.nickname} sent ack {ack}")
         except Exception as exc:
