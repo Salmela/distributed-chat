@@ -66,8 +66,8 @@ class Node:
                                 self.peer_hosts.remove(self.ip)
                             else:
                                 if message.get("type") == "msg":
-                                    print(f"{message["sender"]}: {message["message"]}")
-                                logger.debug(f"Received by {message['sender']}: {message}")
+                                    print(f"{message.get("sender")}: {message.get("message")}")
+                                logger.debug(f"Received by {message.get("sender")}: {message}")
                                 self.message_queue.put(data)
 
                                 if not self.message_queue.empty():
