@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, call
 from main import Node
 
 class UserInterfaceTestCase(unittest.TestCase):
@@ -9,7 +9,7 @@ class UserInterfaceTestCase(unittest.TestCase):
         mock_input = Mock()
         mock_input.side_effect = ["Cool example message", KeyboardInterrupt()]
         socket_instance = Mock()
-        socket_instance.recv.return_value = 'Cool message from peer'
+        socket_instance.recv.return_value = '{"type": "NEW_NODES", "nodes": ["123.123.123.123"]}'
 
         mock_socket_factory = Mock()
         mock_socket_factory.return_value = MagicMock()
@@ -19,7 +19,10 @@ class UserInterfaceTestCase(unittest.TestCase):
             node.ui(456, input=mock_input, socket=mock_socket_factory)
 
         socket_instance.connect.assert_called_with(('123.123.123.123', 456))
-        socket_instance.sendall.assert_called_with(b'{"type": "msg", "message": "Cool example message", "sender": "Nick"}')
+        socket_instance.sendall.assert_has_calls([
+            call(b'{"type": "GET_NODES"}'),
+            call(b'{"type": "msg", "message": "Cool example message", "sender": "Nick"}'),
+        ])
 
 class ServerTestCase(unittest.TestCase):
     def test_receive_connection(self):
@@ -35,7 +38,7 @@ class ServerTestCase(unittest.TestCase):
         mock_socket_factory.return_value.__enter__.return_value = server_socket
 
         with self.assertRaises(KeyboardInterrupt):
-            node.start_server(socket=mock_socket_factory)
+            node.start_server(peer_port=456, socket=mock_socket_factory)
 
         server_socket.bind.assert_called_with(('0.0.0.0', 65412))
         server_socket.listen.assert_called_with()

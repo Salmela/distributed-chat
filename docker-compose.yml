@@ -4,16 +4,31 @@ services:
   startup_server:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    entrypoint:
+      - ./main.py
+      - startup
+    environment:
+      LOG_FILE: ./logs/start_server.log
   peer1:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    environment:
+      LOG_FILE: ./logs/peer1.log
   peer2:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    environment:
+      LOG_FILE: ./logs/peer2.log
   peer3:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    environment:
+      LOG_FILE: ./logs/peer3.log

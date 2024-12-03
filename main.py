@@ -1,6 +1,7 @@
 #!/bin/python3
 
 from socket import AF_INET, SOCK_STREAM, gethostname, gethostbyname, socket as os_socket
+import os
 import sys
 import json
 import queue
@@ -10,7 +11,7 @@ from threading import Thread
 APPLICATION_PORT = 65412
 startup = None
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename=f"chat.log", level=logging.DEBUG, format="%(asctime)s - %(message)s")
+logging.basicConfig(filename=os.environ.get('LOG_FILE', "chat.log"), level=logging.DEBUG, format="%(asctime)s - %(message)s")
 
 class Node:
     def __init__(self, hosts, nickname):
@@ -79,16 +80,12 @@ class Node:
             raise exc
 
     def request_peers(self, peer_port, socket=os_socket):
-        try:
-            with socket(AF_INET, SOCK_STREAM) as s:
-                s.connect((list(self.peer_hosts)[0], peer_port))
-                s.sendall(json.dumps({"type": "GET_NODES"}).encode())
-                data = s.recv(1024)
+        with socket(AF_INET, SOCK_STREAM) as s:
+            s.connect((list(self.peer_hosts)[0], peer_port))
+            s.sendall(json.dumps({"type": "GET_NODES"}).encode())
+            data = s.recv(1024)
 
-                response = json.loads(data)
-
-        except Exception as exc:
-            logger.error(f"Failed to connect to startup server: {exc}")
+        response = json.loads(data)
 
         self.peer_hosts.clear() #clears the startup server from the peer hosts of a node so that the server does not get messages
         self.peer_hosts.update(response.get("nodes", []))
@@ -120,11 +117,11 @@ if __name__ == '__main__':
         peer_hosts =  []
         node = Node(peer_hosts, "startup_server")
     else:
-        peer_hosts = sys.argv[1:] # svm-11-3.cs.helsinki.fi
+        peer_hosts = sys.argv[1:] if len(sys.argv) > 1 else ["startup_server"]
         nickname = input("Set nickname: ")
         node = Node(peer_hosts, nickname)
 
-    # We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
+        # We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
         t = Thread(target=node.ui, args=[APPLICATION_PORT])
         t.start()
 
