@@ -35,12 +35,12 @@ docker-compose exec startup_server bash
 And on another terminal run:
 ```
 docker-compose exec peer1 bash
-./main.py
+./main.py [STARTUP SERVER NAME]
 ```
 And on another terminal run:
 ```
 docker-compose exec peer2 bash
-./main.py
+./main.py [STARTUP SERVER NAME]
 ```
 
 The containers mount the project directory inside them so all the changes you do will be immediately available containers. You just need to restart the main python script file.

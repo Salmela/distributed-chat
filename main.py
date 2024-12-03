@@ -15,15 +15,14 @@ logging.basicConfig(filename=f"chat.log", level=logging.DEBUG, format="%(asctime
 class Node:
     def __init__(self, hosts, nickname):
         self.message_queue = queue.Queue()
-        self.peer_hosts = hosts if hosts is not None else []
+        self.peer_hosts = set(hosts)
         self.ip = gethostbyname(gethostname())
         self.nickname = nickname
 
-    def ui(self, peer_port, startup, input=input, socket=os_socket):
+    def ui(self, peer_port, input=input, socket=os_socket):
         try:
 
-            if not startup:
-                self.request_peers(peer_port, socket)
+            self.request_peers(peer_port, socket)
 
             while True:
                 message = input("viestisi: ")
@@ -55,17 +54,15 @@ class Node:
                             print()
 
                             if message.get("type") == "GET_NODES":
-                                conn.sendall(json.dumps({"nodes": self.peer_hosts}).encode())
-                                new_peer = message.get("node_ip")
-                                self.peer_hosts.append(new_peer)
+                                conn.sendall(json.dumps({"nodes": list(self.peer_hosts)}).encode())
+                                self.peer_hosts.add(addr[0])
                                 print(f"server connected to {self.peer_hosts}")
+
                                 self.send_peers(peer_port)
+
                             elif message.get("type") == "NEW_NODES":
-                                all_peers = set(self.peer_hosts)
-                                new_peers = message.get("nodes", [])
-                                all_peers.update(new_peers)
-                                all_peers.remove(self.ip)
-                                self.peer_hosts = list(all_peers)
+                                self.peer_hosts.update(message.get("nodes", []))
+                                self.peer_hosts.remove(self.ip)
                             else:
                                 print(f"Received by {data}")
                                 logger.debug(f"Received by {message['sender']}: {message}")
@@ -82,31 +79,28 @@ class Node:
             raise exc
 
     def request_peers(self, peer_port, socket=os_socket):
-
-        all_peers = set(self.peer_hosts)
         try:
             with socket(AF_INET, SOCK_STREAM) as s:
-                s.connect(("startup_server", peer_port))
-                s.sendall(json.dumps({"type": "GET_NODES", "node_ip": self.ip}).encode())
+                s.connect((list(self.peer_hosts)[0], peer_port))
+                s.sendall(json.dumps({"type": "GET_NODES"}).encode())
                 data = s.recv(1024)
 
                 response = json.loads(data)
-                peers = response.get("nodes", [])
-
-                all_peers.update(peers)
 
         except Exception as exc:
             logger.error(f"Failed to connect to startup server: {exc}")
 
-        self.peer_hosts = list(all_peers)
+        self.peer_hosts.clear() #clears the startup server from the peer hosts of a node so that the server does not get messages
+        self.peer_hosts.update(response.get("nodes", []))
         print(f"Connected to {self.peer_hosts}")
 
     def send_peers(self, peer_port, socket=os_socket):
         try:
             for peer_host in self.peer_hosts:
+                peer_hosts = list(self.peer_hosts)
                 with socket(AF_INET, SOCK_STREAM) as s:
                     s.connect((peer_host, peer_port))
-                    s.sendall(json.dumps({"type": "NEW_NODES", "nodes": self.peer_hosts}).encode())
+                    s.sendall(json.dumps({"type": "NEW_NODES", "nodes": peer_hosts}).encode())
 
         except Exception as exc:
             logger.error(f"Failed to send new peers: {exc}")
@@ -118,21 +112,21 @@ if __name__ == '__main__':
     if '--help' in sys.argv:
         print("Start the startup server:")
         print(f"Usage: {sys.argv[0]} startup")
+        print("Start the application:")
+        print(f"Usage: {sys.argv[0]} [STARTUP SERVER NAME]")
         exit(-1)
 
     if len(sys.argv) > 1 and sys.argv[1] == "startup":
-        startup = 1
-        peer_hosts = None
-        nickname = "startup_server"
+        peer_hosts =  []
+        node = Node(peer_hosts, "startup_server")
     else:
         peer_hosts = sys.argv[1:] # svm-11-3.cs.helsinki.fi
         nickname = input("Set nickname: ")
-
-    node = Node(peer_hosts, nickname)
+        node = Node(peer_hosts, nickname)
 
     # We are creating separate threads for server and client so that they can run at same time. The sockets api is blocking.
-    t = Thread(target=node.ui, args=[APPLICATION_PORT, startup])
-    t.start()
+        t = Thread(target=node.ui, args=[APPLICATION_PORT])
+        t.start()
 
     t = Thread(target=node.start_server, args=[APPLICATION_PORT])
     t.start()
