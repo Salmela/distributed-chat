@@ -1,6 +1,7 @@
 #!/bin/python3
 
 from socket import AF_INET, SOCK_STREAM, gethostname, gethostbyname, socket as os_socket
+import os
 import sys
 import json
 import queue
@@ -10,7 +11,7 @@ from threading import Thread
 APPLICATION_PORT = 65412
 startup = None
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename=f"chat.log", level=logging.DEBUG, format="%(asctime)s - %(message)s")
+logging.basicConfig(filename=os.environ.get('LOG_FILE', "chat.log"), level=logging.DEBUG, format="%(asctime)s - %(message)s")
 
 class Node:
     def __init__(self, hosts, nickname):
