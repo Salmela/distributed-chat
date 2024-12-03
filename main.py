@@ -26,14 +26,15 @@ class Node:
             self.request_peers(peer_port, socket)
 
             while True:
-                message = input("viestisi: ")
+                message = input()
+                print(f"{self.nickname}: {message}")
                 for peer_host in self.peer_hosts:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.connect((peer_host, peer_port))
                         s.sendall(json.dumps({"type": "msg", "message": message, "sender": self.nickname}).encode())
                         data = s.recv(1024)
 
-                        print()
+                        
                         logger.debug(f"Sent by {self.nickname}: {data}")
         except Exception as exc:
             logger.exception(exc)
@@ -52,7 +53,6 @@ class Node:
                             if not data:
                                 break
                             message = json.loads(data)
-                            print()
 
                             if message.get("type") == "GET_NODES":
                                 conn.sendall(json.dumps({"nodes": list(self.peer_hosts)}).encode())
@@ -65,7 +65,8 @@ class Node:
                                 self.peer_hosts.update(message.get("nodes", []))
                                 self.peer_hosts.remove(self.ip)
                             else:
-                                print(f"Received by {data}")
+                                if message.get("type") == "msg":
+                                    print(f"{message["sender"]}: {message["message"]}")
                                 logger.debug(f"Received by {message['sender']}: {message}")
                                 self.message_queue.put(data)
 
