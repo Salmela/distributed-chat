@@ -4,16 +4,23 @@ services:
   startup_server:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/startup_server.log:/usr/src/app/chat.log:rw
+    entrypoint:
+      - ./main.py
+      - startup
   peer1:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/peer1.log:/usr/src/app/chat.log:rw
   peer2:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/peer2.log:/usr/src/app/chat.log:rw
   peer3:
     build: ./
     volumes:
-      - ./:/usr/src/app:rw
+      - ./:/usr/src/app:ro
+      - ./logs/peer3.log:/usr/src/app/chat.log:rw

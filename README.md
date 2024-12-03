@@ -26,13 +26,7 @@ docker-compose up -d
 ```
 
 After the containers are running, startup our project in the containers manually.
-Startup the server first:
-
-```
-docker-compose exec startup_server bash
-./main.py startup
-```
-And on another terminal run:
+Startup the first node:
 ```
 docker-compose exec peer1 bash
 ./main.py [STARTUP SERVER NAME]
