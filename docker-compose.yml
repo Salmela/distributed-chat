@@ -1,6 +1,10 @@
 version: '2.1'
 
 services:
+  startup_server:
+    build: ./
+    volumes:
+      - ./:/usr/src/app:rw
   peer1:
     build: ./
     volumes:

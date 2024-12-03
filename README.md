@@ -25,16 +25,22 @@ Start two peers. The project's docker-compose config will first fetch the base i
 docker-compose up -d
 ```
 
-After the containers are running, startup our project in the containers manually:
+After the containers are running, startup our project in the containers manually.
+Startup the server first:
 
 ```
-docker-compose exec peer1 bash
-./main.py peer2
+docker-compose exec startup_server bash
+./main.py startup
 ```
-And on another terminal run
+And on another terminal run:
+```
+docker-compose exec peer1 bash
+./main.py [STARTUP SERVER NAME]
+```
+And on another terminal run:
 ```
 docker-compose exec peer2 bash
-./main.py peer1
+./main.py [STARTUP SERVER NAME]
 ```
 
 The containers mount the project directory inside them so all the changes you do will be immediately available containers. You just need to restart the main python script file.
