@@ -7,6 +7,7 @@ services:
       - ./:/usr/src/app:ro
       - ./logs/:/usr/src/app/logs:rw
     entrypoint:
+      - python3
       - ./main.py
       - startup
     environment:
