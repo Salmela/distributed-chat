@@ -21,6 +21,7 @@ class UserInterfaceTestCase(unittest.TestCase):
         socket_instance.connect.assert_called_with(('123.123.123.123', 456))
         socket_instance.sendall.assert_has_calls([
             call(b'{"type": "GET_NODES"}'),
+            call(b'{"type": "NEW_NODE"}'),
             call(b'{"type": "msg", "message": "Cool example message", "sender": "Nick"}'),
         ])
 
@@ -38,7 +39,7 @@ class ServerTestCase(unittest.TestCase):
         mock_socket_factory.return_value.__enter__.return_value = server_socket
 
         with self.assertRaises(KeyboardInterrupt):
-            node.start_server(peer_port=456, socket=mock_socket_factory)
+            node.start_server(socket=mock_socket_factory)
 
         server_socket.bind.assert_called_with(('0.0.0.0', 65412))
         server_socket.listen.assert_called_with()
