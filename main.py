@@ -16,6 +16,7 @@ class Node:
     def __init__(self, hosts, nickname):
         self.message_queue = queue.Queue()
         self.peer_hosts = set(hosts)
+        self.inactive_hosts = set()
         self.nickname = nickname
 
     def ui(self, peer_port, input=input, socket=os_socket):
@@ -27,14 +28,25 @@ class Node:
             while True:
                 message = input()
                 print(f"{self.nickname}: {message}")
-                for peer_host in self.peer_hosts:
-                    with socket(AF_INET, SOCK_STREAM) as s:
-                        s.connect((peer_host, peer_port))
-                        s.sendall(json.dumps({"type": "msg", "message": message, "sender": self.nickname}).encode())
-                        data = s.recv(1024)
+                try:
+                    for peer_host in self.peer_hosts:
+                        with socket(AF_INET, SOCK_STREAM) as s:
+                            s.connect((peer_host, peer_port))
+                            s.sendall(json.dumps({"type": "msg", "message": message, "sender": self.nickname}).encode())
+                            data = s.recv(1024)
 
 
-                        logger.debug(f"Sent by {self.nickname}: {data}")
+                            logger.debug(f"Sent by {self.nickname}: {data}")
+                except Exception as exc:
+                        logger.exception(exc)
+                        #print(str(exc))
+                        if "Connection refused" in str(exc):
+                            print(f"{peer_host} has disconnected.")
+                            logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
+                            self.inactive_hosts.add(peer_host)
+                            #self.peer_hosts.remove(peer_host)
+                #TODO: update peers
+                self.update_peer_hosts()
         except Exception as exc:
             logger.exception(exc)
             raise exc
@@ -100,6 +112,15 @@ class Node:
 
         except Exception as exc:
             logger.error(f"Failed to send address to peers: {exc}")
+    
+    def update_peer_hosts(self):
+        """
+        Helper method for updating the set of peer hosts.
+        """
+        logger.debug(f'Updating peer hosts. Inactive hosts :{self.inactive_hosts}\nActive hosts: {self.peer_hosts}')
+        self.peer_hosts = self.peer_hosts-self.inactive_hosts
+        self.inactive_hosts.clear()
+        logger.debug(f'Inactive hosts removed from list of peer hosts. Current peer hosts: {self.peer_hosts}')
 
 # Only run this code if the file was executed from command line
 if __name__ == '__main__':
