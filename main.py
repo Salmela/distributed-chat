@@ -39,13 +39,12 @@ class Node:
                             logger.debug(f"Sent by {self.nickname}: {data}")
                 except Exception as exc:
                         logger.exception(exc)
-                        #print(str(exc))
+
                         if "Connection refused" in str(exc):
                             print(f"{peer_host} has disconnected.")
                             logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
                             self.inactive_hosts.add(peer_host)
-                            #self.peer_hosts.remove(peer_host)
-                #TODO: update peers
+
                 self.update_peer_hosts()
         except Exception as exc:
             logger.exception(exc)
