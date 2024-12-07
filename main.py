@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(filename=os.environ.get('LOG_FILE', "chat.log"),
                     level=logging.DEBUG, format="%(asctime)s - %(message)s")
 
-def send_message(socket, json):
-    socket.sendall(json.dumps(json).encode())
+def send_message(socket, data):
+    socket.sendall(json.dumps(data).encode())
 
 class Node:
     """
