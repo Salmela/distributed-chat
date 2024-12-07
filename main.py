@@ -21,13 +21,14 @@ class Node:
         docstring
     """
     def __init__(self, hosts, nickname):
+        #too many instance attributes T: pylint :D
         self.incoming_queue = queue.Queue()
         self.outbound_queue = queue.Queue() #for outbound pending messages
         self.peer_hosts = set(hosts)
         self.nickname = nickname
-        self.acks = 0
-        self.rejects = 0
-        self.index = 0 #indicates the next message index
+        self.acks = 0 #can this be function spesific
+        self.rejects = 0 # can this be function spesific
+        self.index = 0 #indicates the next message index for every node
         self.pending_own = None
         self.pending_other = None
 
@@ -42,6 +43,7 @@ class Node:
 
             while True:
                 message = input()
+                #check that this queue works
                 self.outbound_queue.put(message)
                 if not self.pending_own:
                     self.pending_own = self.outbound_queue.get(message)
@@ -67,6 +69,7 @@ class Node:
                                 break
                             data = json.loads(data)
 
+                            #check that this queue works
                             self.incoming_queue.put(data)
                             message = self.incoming_queue.get()
 
@@ -80,6 +83,8 @@ class Node:
                                 conn.sendall(json.dumps({"type": "SYSTEM_INDEX",
                                                          "index": self.index}).encode())
                             elif message.get("type") == "PROPOSE":
+                                #pending has to be time limited in case committing node chrashes
+                                #otherwise the pending will just get stuck
                                 value = ""
                                 if not self.pending_other and self.index == message.get("index"):
                                     self.pending_other = message.get("message")
@@ -89,9 +94,11 @@ class Node:
                                 conn.sendall(json.dumps({"type": "RESPONSE", "value": value,
                                                          "index": message.get("index"),
                                                          "sender": self.nickname}).encode())
-                            elif message.get("type") == "DROP":
-                                self.pending_other = None
                             elif message.get("type") == "COMMIT":
+                                #if a node misses commits, it will have the wrong index when
+                                #the next commit arrives. Node requests the missing
+                                #indexes from other nodes?
+                                # HISTORY needed for this
                                 print(f"{message.get('sender')}: {message.get('message')}")
                                 logger.debug("Received by %s: %s", message.get('sender'), str(message))
                                 formatted_message = (
@@ -142,7 +149,7 @@ class Node:
 
                     index.append(response.get('index'))
 
-            self.index = max(index)
+            self.index = max(index) #max index is the most up to date
 
         except Exception as exc:
             logger.error("Failed to send address to peers: %s", exc)
@@ -193,8 +200,7 @@ class Node:
                 self.pending_own = None
                 return
 
-        self.send_message(peer_port, "DROP")
-        delay = random.uniform(0.1, 0.3)
+        delay = random.uniform(0.1, 0.3) #change this to async?
         time.sleep(delay)
         self.send_message(peer_port, "PROPOSE")
 
