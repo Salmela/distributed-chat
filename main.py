@@ -77,6 +77,8 @@ class Node:
                             elif message.get("type") == "NEW_NODE":
                                 self.peer_hosts.add(addr[0])
                                 print(f"{addr[0]} joined.")
+                                conn.sendall(json.dumps({"type": "SYSTEM_INDEX",
+                                                         "index": self.index}).encode())
                             elif message.get("type") == "PROPOSE":
                                 value = ""
                                 if not self.pending_other and self.index == message.get("index"):
@@ -91,7 +93,7 @@ class Node:
                                 self.pending_other = None
                             elif message.get("type") == "COMMIT":
                                 print(f"{message.get('sender')}: {message.get('message')}")
-                                logger.debug("Received by %s: %d", message.get('sender'), message)
+                                logger.debug("Received by %s: %s", message.get('sender'), str(message))
                                 formatted_message = (
                                                 f"Received {message['message']} "
                                                 f"from {message['sender']}"
@@ -101,8 +103,8 @@ class Node:
                                                          "sender": self.nickname}).encode()
                                 conn.sendall(ack_commit)
                                 self.pending_other = None
-                                self.index+=1
-                                logger.debug("%s sent ack %d", self.nickname, ack_commit)
+                                self.index = message.get('index')+1
+                                logger.debug("%s sent ack %s", self.nickname, str(ack_commit.decode('utf-8')))
         except Exception as exc:
             logger.exception(exc)
             raise exc
@@ -129,11 +131,18 @@ class Node:
         """
         docstring
         """
+        index = []
         try:
             for peer_host in self.peer_hosts:
                 with socket(AF_INET, SOCK_STREAM) as s:
                     s.connect((peer_host, peer_port))
                     s.sendall(json.dumps({"type": "NEW_NODE"}).encode())
+                    data = s.recv(1024)
+                    response = json.loads(data)
+
+                    index.append(response.get('index'))
+
+            self.index = max(index)
 
         except Exception as exc:
             logger.error("Failed to send address to peers: %s", exc)
@@ -162,7 +171,7 @@ class Node:
                     if response.get("type") == "ACK_COMMIT":
                         print(f"{response.get('message')}, sender: {response.get('sender')}")
 
-                    logger.debug("Sent by %s: %d", self.nickname, data)
+                    logger.debug("Sent by %s: %s", self.nickname, str(response))
 
             if type == "PROPOSE":
                 self.handle_responses(peer_port)
