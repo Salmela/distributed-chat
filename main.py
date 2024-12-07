@@ -1,4 +1,3 @@
-"""docstring"""
 #!/bin/python3
 
 from socket import AF_INET, SOCK_STREAM, socket as os_socket
@@ -15,6 +14,9 @@ APPLICATION_PORT = 65412
 logger = logging.getLogger(__name__)
 logging.basicConfig(filename=os.environ.get('LOG_FILE', "chat.log"),
                     level=logging.DEBUG, format="%(asctime)s - %(message)s")
+
+def send_message(socket, json):
+    socket.sendall(json.dumps(json).encode())
 
 class Node:
     """
@@ -36,7 +38,6 @@ class Node:
         docstring
         """
         try:
-
             self.request_peers(peer_port)
             self.send_address(peer_port)
 
@@ -71,14 +72,13 @@ class Node:
                             message = self.incoming_queue.get()
 
                             if message.get("type") == "GET_NODES":
-                                conn.sendall(json.dumps({"nodes": list(self.peer_hosts)}).encode())
+                                send_message(conn, {"nodes": list(self.peer_hosts)})
                                 self.peer_hosts.add(addr[0])
                                 print(f"server connected to {self.peer_hosts}")
                             elif message.get("type") == "NEW_NODE":
                                 self.peer_hosts.add(addr[0])
                                 print(f"{addr[0]} joined.")
-                                conn.sendall(json.dumps({"type": "SYSTEM_INDEX",
-                                                         "index": self.index}).encode())
+                                send_message(conn, {"type": "SYSTEM_INDEX", "index": self.index})
                             elif message.get("type") == "PROPOSE":
                                 value = ""
                                 if not self.pending_other and self.index == message.get("index"):
@@ -86,25 +86,28 @@ class Node:
                                     value = "ack"
                                 else:
                                     value = "reject"
-                                conn.sendall(json.dumps({"type": "RESPONSE", "value": value,
-                                                         "index": message.get("index"),
-                                                         "sender": self.nickname}).encode())
+                                send_message(conn, {
+                                    "type": "RESPONSE",
+                                    "value": value,
+                                    "index": message.get("index"),
+                                    "sender": self.nickname
+                                })
                             elif message.get("type") == "DROP":
                                 self.pending_other = None
                             elif message.get("type") == "COMMIT":
                                 print(f"{message.get('sender')}: {message.get('message')}")
                                 logger.debug("Received by %s: %s", message.get('sender'), str(message))
                                 formatted_message = (
-                                                f"Received {message['message']} "
-                                                f"from {message['sender']}"
+                                    f"Received {message['message']} "
+                                    f"from {message['sender']}"
                                 )
-                                ack_commit = json.dumps({"type": "ACK_COMMIT",
-                                                         "message": formatted_message,
-                                                         "sender": self.nickname}).encode()
-                                conn.sendall(ack_commit)
+                                ack_commit = {"type": "ACK_COMMIT",
+                                              "message": formatted_message,
+                                              "sender": self.nickname}
+                                send_message(conn, ack_commit)
                                 self.pending_other = None
-                                self.index = message.get('index')+1
-                                logger.debug("%s sent ack %s", self.nickname, str(ack_commit.decode('utf-8')))
+                                self.index = message.get('index') + 1
+                                logger.debug("%s sent ack %s", self.nickname, ack_commit)
         except Exception as exc:
             logger.exception(exc)
             raise exc
@@ -116,7 +119,7 @@ class Node:
         try:
             with socket(AF_INET, SOCK_STREAM) as s:
                 s.connect((list(self.peer_hosts)[0], peer_port))
-                s.sendall(json.dumps({"type": "GET_NODES"}).encode())
+                send_message(s, {"type": "GET_NODES"})
                 data = s.recv(1024)
 
             response = json.loads(data)
@@ -136,7 +139,7 @@ class Node:
             for peer_host in self.peer_hosts:
                 with socket(AF_INET, SOCK_STREAM) as s:
                     s.connect((peer_host, peer_port))
-                    s.sendall(json.dumps({"type": "NEW_NODE"}).encode())
+                    send_message(s, {"type": "NEW_NODE"})
                     data = s.recv(1024)
                     response = json.loads(data)
 
@@ -155,18 +158,20 @@ class Node:
             for peer_host in self.peer_hosts:
                 with socket(AF_INET, SOCK_STREAM) as s:
                     s.connect((peer_host, peer_port))
-                    s.sendall(json.dumps({"type": type,
-                                          "index": self.index,
-                                          "message": self.pending_own,
-                                          "sender": self.nickname}).encode())
+                    send_message(s, {
+                        "type": type,
+                        "index": self.index,
+                        "message": self.pending_own,
+                        "sender": self.nickname
+                    })
                     data = s.recv(1024)
                     response = json.loads(data)
 
                     if response.get("type") == "RESPONSE":
                         if response.get("value") == "ack":
-                            self.acks+=1
+                            self.acks += 1
                         elif response.get("value") == "reject":
-                            self.rejects+=1
+                            self.rejects += 1
 
                     if response.get("type") == "ACK_COMMIT":
                         print(f"{response.get('message')}, sender: {response.get('sender')}")
@@ -189,7 +194,7 @@ class Node:
             if self.acks > self.rejects:
                 self.send_message(peer_port, "COMMIT")
                 print(f"{self.nickname}: {self.pending_own}")
-                self.index+=1
+                self.index += 1
                 self.pending_own = None
                 return
 
