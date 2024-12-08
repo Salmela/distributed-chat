@@ -23,13 +23,15 @@ class Node:
         docstring
     """
     def __init__(self, hosts, nickname):
+        #too many instance attributes T: pylint :D
         self.incoming_queue = queue.Queue()
         self.outbound_queue = queue.Queue() #for outbound pending messages
         self.peer_hosts = set(hosts)
+        self.inactive_hosts = set()
         self.nickname = nickname
-        self.acks = 0
-        self.rejects = 0
-        self.index = 0 #indicates the next message index
+        self.acks = 0 #can this be function spesific
+        self.rejects = 0 # can this be function spesific
+        self.index = 0 #indicates the next message index for every node
         self.pending_own = None
         self.pending_other = None
 
@@ -43,6 +45,7 @@ class Node:
 
             while True:
                 message = input()
+                #check that this queue works
                 self.outbound_queue.put(message)
                 if not self.pending_own:
                     self.pending_own = self.outbound_queue.get(message)
@@ -68,6 +71,7 @@ class Node:
                                 break
                             data = json.loads(data)
 
+                            #check that this queue works
                             self.incoming_queue.put(data)
                             message = self.incoming_queue.get()
 
@@ -80,6 +84,8 @@ class Node:
                                 print(f"{addr[0]} joined.")
                                 send_message(conn, {"type": "SYSTEM_INDEX", "index": self.index})
                             elif message.get("type") == "PROPOSE":
+                                #pending has to be time limited in case committing node chrashes
+                                #otherwise the pending will just get stuck
                                 value = ""
                                 if not self.pending_other and self.index == message.get("index"):
                                     self.pending_other = message.get("message")
@@ -95,6 +101,10 @@ class Node:
                             elif message.get("type") == "DROP":
                                 self.pending_other = None
                             elif message.get("type") == "COMMIT":
+                                #if a node misses commits, it will have the wrong index when
+                                #the next commit arrives. Node requests the missing
+                                #indexes from other nodes?
+                                # HISTORY needed for this
                                 print(f"{message.get('sender')}: {message.get('message')}")
                                 logger.debug("Received by %s: %s", message.get('sender'), str(message))
                                 formatted_message = (
@@ -137,15 +147,20 @@ class Node:
         index = []
         try:
             for peer_host in self.peer_hosts:
-                with socket(AF_INET, SOCK_STREAM) as s:
-                    s.connect((peer_host, peer_port))
-                    send_message(s, {"type": "NEW_NODE"})
-                    data = s.recv(1024)
-                    response = json.loads(data)
 
-                    index.append(response.get('index'))
+                try:
+                    with socket(AF_INET, SOCK_STREAM) as s:
+                        s.connect((peer_host, peer_port))
+                        send_message(s, {"type": "NEW_NODE"})
+                        data = s.recv(1024)
+                        response = json.loads(data)
 
-            self.index = max(index)
+                        index.append(response.get('index'))
+                except Exception as exc:
+                    self.handle_exception(peer_host, exc)
+
+            self.index = max(index) #max index is the most up to date
+            self.update_peer_hosts()
 
         except Exception as exc:
             logger.error("Failed to send address to peers: %s", exc)
@@ -156,33 +171,38 @@ class Node:
         """
         try:
             for peer_host in self.peer_hosts:
-                with socket(AF_INET, SOCK_STREAM) as s:
-                    s.connect((peer_host, peer_port))
-                    send_message(s, {
+                try:
+                    with socket(AF_INET, SOCK_STREAM) as s:
+                        s.connect((peer_host, peer_port))
+                        send_message(s, {
                         "type": type,
                         "index": self.index,
                         "message": self.pending_own,
                         "sender": self.nickname
-                    })
-                    data = s.recv(1024)
-                    response = json.loads(data)
+                        })
+                        data = s.recv(1024)
+                        response = json.loads(data)
 
-                    if response.get("type") == "RESPONSE":
-                        if response.get("value") == "ack":
-                            self.acks += 1
-                        elif response.get("value") == "reject":
-                            self.rejects += 1
+                        if response.get("type") == "RESPONSE":
+                            if response.get("value") == "ack":
+                                self.acks+=1
+                            elif response.get("value") == "reject":
+                                self.rejects+=1
 
-                    if response.get("type") == "ACK_COMMIT":
-                        print(f"{response.get('message')}, sender: {response.get('sender')}")
+                        if response.get("type") == "ACK_COMMIT":
+                            print(f"{response.get('message')}, sender: {response.get('sender')}")
 
-                    logger.debug("Sent by %s: %s", self.nickname, str(response))
+                        logger.debug("Sent by %s: %s", self.nickname, str(response))
+                except Exception as exc:
+                    self.handle_exception(peer_host, exc)
+
+            self.update_peer_hosts()
 
             if type == "PROPOSE":
                 self.handle_responses(peer_port)
                 self.acks = 0
                 self.rejects = 0
-
+            
         except Exception as exc:
             logger.error("Failed to propose message to peers: %s", exc)
 
@@ -198,10 +218,33 @@ class Node:
                 self.pending_own = None
                 return
 
-        self.send_message(peer_port, "DROP")
-        delay = random.uniform(0.1, 0.3)
+        delay = random.uniform(0.1, 0.3) #change this to async?
         time.sleep(delay)
         self.send_message(peer_port, "PROPOSE")
+    
+    def handle_exception(self, peer_host, exc):
+        """
+        Currently only handles connection refused errors. Assumed to be called during an exception 
+        in a loop where each peer host is iterated through.
+
+        :param peer_host: The peer host which an exception has occurred with.
+        :param exc: The exception raised.
+        """
+        if "Connection refused" in str(exc):
+            print(f"{peer_host} has disconnected.")
+            logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
+            self.inactive_hosts.add(peer_host)
+
+
+    def update_peer_hosts(self):
+        """
+        Helper method for updating the set of peer hosts, if inactive hosts are found.
+        """
+        if len(self.inactive_hosts)>0:
+            logger.debug(f'Updating peer hosts. Inactive hosts :{self.inactive_hosts}; Active hosts: {self.peer_hosts}')
+            self.peer_hosts = self.peer_hosts-self.inactive_hosts
+            self.inactive_hosts.clear()
+            logger.debug(f'Inactive hosts removed from list of peer hosts. Current peer hosts: {self.peer_hosts}')
 
 # Only run this code if the file was executed from command line
 if __name__ == '__main__':
