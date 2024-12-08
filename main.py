@@ -114,7 +114,6 @@ class Node:
                                 self.index = message.get('index')+1
                                 logger.debug("%s sent ack %s", self.nickname, str(ack_commit.decode('utf-8')))
         except Exception as exc:
-            print('server error--')
             logger.exception(exc)
             raise exc
 
@@ -189,21 +188,15 @@ class Node:
                 except Exception as exc:
                     self.handle_exception(peer_host, exc)
 
+            self.update_peer_hosts()
+
             if type == "PROPOSE":
                 self.handle_responses(peer_port)
                 self.acks = 0
                 self.rejects = 0
             
-            self.update_peer_hosts()
-
         except Exception as exc:
             logger.error("Failed to propose message to peers: %s", exc)
-            # if "Connection refused" in str(exc):
-            #     print(f"{peer_host} has disconnected.")
-            #     logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
-            #     self.inactive_hosts.add(peer_host)
-
-        #self.update_peer_hosts()
 
     def handle_responses(self, peer_port):
         """
@@ -235,13 +228,12 @@ class Node:
             self.inactive_hosts.add(peer_host)
 
 
-    
     def update_peer_hosts(self):
         """
         Helper method for updating the set of peer hosts, if inactive hosts are found.
         """
         if len(self.inactive_hosts)>0:
-            logger.debug(f'Updating peer hosts. Inactive hosts :{self.inactive_hosts}\nActive hosts: {self.peer_hosts}')
+            logger.debug(f'Updating peer hosts. Inactive hosts :{self.inactive_hosts}; Active hosts: {self.peer_hosts}')
             self.peer_hosts = self.peer_hosts-self.inactive_hosts
             self.inactive_hosts.clear()
             logger.debug(f'Inactive hosts removed from list of peer hosts. Current peer hosts: {self.peer_hosts}')
