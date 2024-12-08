@@ -54,10 +54,11 @@ class UserInterface:
         sys.stdout.flush()
 
     def run(self):
-        if os.name == 'nt':
-            self.run_plain()
-        else:
-            self.run_fancy()
+#        if os.name == 'nt':
+#            self.run_plain()
+#        else:
+#            self.run_fancy()
+        self.run_plain()
 
     def run_input_listener(self):
         try:
@@ -261,6 +262,9 @@ class Node:
                             elif message.get("type") == "COMMIT":
 #                                if message.get("index") != self.index:
 #                                    self.get_history(peer_port, addr[0] #PEER PORT NEEDED HERE
+                                self.history.append({"index": message.get("index"),
+                                                     "sender": message.get("sender"),
+                                                     "message": message.get("message")})
                                 if self.nickname != message.get('sender'):
                                     self.event_queue.put({"type": "others_message", "sender": message.get('sender'), "content": message.get('message')})
                                 logger.debug("Received by %s: %s", message.get('sender'), str(message))
@@ -346,7 +350,6 @@ class Node:
 
                 response = json.loads(data)
                 self.history = response.get("history")
-                print(self.history)
 
             except Exception as exc:
                 logger.error("Failed to request history: %s", exc)
@@ -417,6 +420,7 @@ class Node:
             if self.acks > self.rejects:
                 self.send_message(peer_port, "COMMIT")
                 self.event_queue.put({"type": "own_message", "content": self.pending_own})
+                self.history.append({"index": self.index, "sender": self.nickname, "message": self.pending_own})
                 self.index += 1
                 self.pending_own = None
                 return
