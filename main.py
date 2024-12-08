@@ -112,8 +112,18 @@ class UserInterface:
                 elif event["type"] == "info":
                     self.content.append(event["content"])
                 elif event["type"] == "own_message":
+                    size = os.get_terminal_size()
                     color = hash(self.nickname) % 7
-                    self.content.append(f"\033[9{color}m{self.nickname}\033[0m: {event['content']}")
+                    content = event['content']
+                    first = True
+                    while content:
+                        line = content[:size.columns]
+                        content = content[size.columns:]
+                        if first:
+                            self.content.append(f"\033[9{color}m{self.nickname}\033[0m: {event['content']}")
+                        else:
+                            self.content.append(f"{' ' * len(self.nickname)}  {event['content']}")
+                        first = False
                 elif event["type"] == "others_message":
                     color = hash(event['sender']) % 7
                     self.content.append(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
@@ -137,20 +147,42 @@ class UserInterface:
         The fallback ui for windows
         """
         try:
+            thread = Thread(target=self.plain_events, name="events")
+            thread.start()
             while True:
                 message = input()
                 self.send_message(message)
         except Exception as exc:
             logger.exception(exc)
+            self.exited = True
             raise exc
-        finally:
-            sys.stdout.write("\033[0m\033[?1049l")
-            sys.stdout.flush()
-            termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, tty_attrs)
 
+    def plain_events(self):
+        while not self.exited:
+            logger.info(f"wait")
+            event = self.event_queue.get()
+            logger.info(f"handle event: {event}")
 
-def send_message(socket, data):
-    socket.sendall(json.dumps(data).encode())
+            if event["type"] == "error":
+                print("\033[1m\033[31m" + event["content"] + "\033[0m")
+            elif event["type"] == "info":
+                print(event["content"])
+            elif event["type"] == "own_message":
+                size = os.get_terminal_size()
+                color = hash(self.nickname) % 7
+                content = event['content']
+                first = True
+                while content:
+                    line = content[:size.columns]
+                    content = content[size.columns:]
+                    if first:
+                        print(f"\033[9{color}m{self.nickname}\033[0m: {event['content']}")
+                    else:
+                        print(f"{' ' * len(self.nickname)}  {event['content']}")
+                    first = False
+            elif event["type"] == "others_message":
+                color = hash(event['sender']) % 7
+                print(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
 
 
 class Node:
@@ -279,7 +311,7 @@ class Node:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
                         s.connect((peer_host, peer_port))
-                        send_message(s, {"type": "NEW_NODE"})
+                        send_packet(s, {"type": "NEW_NODE"})
                         data = s.recv(1024)
                         try:
                             response = json.loads(data)
