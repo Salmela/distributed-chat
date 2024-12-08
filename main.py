@@ -399,7 +399,7 @@ class Node:
         :param exc: The exception raised.
         """
         if "Connection refused" in str(exc):
-            print(f"{peer_host} has disconnected.")
+            self.event_queue.put({"type": "info", "content": f"{peer_host} has disconnected."})
             logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
             self.inactive_hosts.add(peer_host)
 
