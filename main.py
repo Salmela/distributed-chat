@@ -96,6 +96,8 @@ class UserInterface:
                         elif code == "[C":
                             self.cursor = max(len(self.buffer), self.cursor + 1)
                     elif ord(new_char) == 13:
+                        if self.buffer.strip() == "\\exit":
+                            break
                         self.send_message(self.buffer)
                         self.buffer = ""
                         self.cursor = 0
@@ -141,6 +143,7 @@ class UserInterface:
             sys.stdout.write("\033[0m\033[?1049l")
             sys.stdout.flush()
             termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, tty_attrs)
+            os._exit(0)
 
     def run_plain(self, input=input):
         """
@@ -151,11 +154,14 @@ class UserInterface:
             thread.start()
             while True:
                 message = input()
+                if message.strip() == "\\exit":
+                    break
                 self.send_message(message)
         except Exception as exc:
             logger.exception(exc)
             self.exited = True
-            raise exc
+        finally:
+            os._exit(0)
 
     def plain_events(self):
         while not self.exited:
@@ -243,7 +249,6 @@ class Node:
                             elif message.get("type") == "PROPOSE":
                                 # Pending has to be time limited in case committing node chrashes
                                 # otherwise the pending will just get stuck
-                                value = ""
                                 if not self.pending_other and self.index == message.get("index"):
                                     self.pending_other = message.get("message")
                                     value = "ack"
@@ -255,8 +260,6 @@ class Node:
                                     "index": message.get("index"),
                                     "sender": self.nickname
                                 })
-                            elif message.get("type") == "DROP":
-                                self.pending_other = None
                             elif message.get("type") == "COMMIT":
                                 # If a node misses commits, it will have the wrong index when
                                 # the next commit arrives. Node requests the missing
@@ -408,9 +411,9 @@ class Node:
         """
         Helper method for updating the set of peer hosts, if inactive hosts are found.
         """
-        if len(self.inactive_hosts)>0:
+        if len(self.inactive_hosts) > 0:
             logger.debug(f'Updating peer hosts. Inactive hosts :{self.inactive_hosts}; Active hosts: {self.peer_hosts}')
-            self.peer_hosts = self.peer_hosts-self.inactive_hosts
+            self.peer_hosts = self.peer_hosts - self.inactive_hosts
             self.inactive_hosts.clear()
             logger.debug(f'Inactive hosts removed from list of peer hosts. Current peer hosts: {self.peer_hosts}')
 
