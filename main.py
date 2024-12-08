@@ -54,11 +54,10 @@ class UserInterface:
         sys.stdout.flush()
 
     def run(self):
-#        if os.name == 'nt':
-#            self.run_plain()
-#        else:
-#            self.run_fancy()
-        self.run_plain()
+        if os.name == 'nt':
+            self.run_plain()
+        else:
+            self.run_fancy()
 
     def run_input_listener(self):
         try:
@@ -192,16 +191,15 @@ class Node:
         docstring
     """
     def __init__(self, hosts, nickname):
-        # Too many instance attributes T: pylint :D
         self.event_queue = queue.Queue()
         self.incoming_queue = queue.Queue()
-        self.outbound_queue = queue.Queue() # for outbound pending messages
+        self.outbound_queue = queue.Queue()
         self.peer_hosts = set(hosts)
         self.inactive_hosts = set()
         self.nickname = nickname
-        self.acks = 0 # can this be function spesific
-        self.rejects = 0 # can this be function spesific
-        self.index = 0 # indicates the next message index for every node
+        self.acks = 0
+        self.rejects = 0
+        self.index = 0
         self.pending_own = None
         self.pending_other = None
         self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname)
@@ -231,7 +229,6 @@ class Node:
                                 break
                             data = json.loads(data)
 
-                            # Check that this queue works
                             self.incoming_queue.put(data)
                             message = self.incoming_queue.get()
 
@@ -298,7 +295,7 @@ class Node:
             response = json.loads(data)
             self.peer_hosts.clear()
             self.peer_hosts.update(response.get("nodes", []))
-            self.peer_hosts.remove(local_address) #remove local address
+            self.peer_hosts.discard(local_address) #remove local address
 
             print(f"Connected to {self.peer_hosts}")
 
@@ -329,7 +326,7 @@ class Node:
                 except Exception as exc:
                     self.handle_exception(peer_host, exc)
 
-            self.index = max(index) if index else 0 # Max index is the most up to date
+            self.index = max(index) if index else 0
             self.update_peer_hosts()
 
         except Exception:
@@ -425,7 +422,7 @@ class Node:
                 self.pending_own = None
                 return
 
-        delay = random.uniform(0.1, 0.3) #change this to async?
+        delay = random.uniform(0.1, 0.3)
         time.sleep(delay)
         self.send_message(peer_port, "PROPOSE")
 
