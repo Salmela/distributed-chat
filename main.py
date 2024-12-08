@@ -1,6 +1,6 @@
 #!/bin/python3
 
-from socket import AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, socket as os_socket
+from socket import AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, gethostname, gethostbyname, socket as os_socket
 import tty
 import termios
 import os
@@ -10,7 +10,8 @@ import queue
 import logging
 import time
 import random
-from threading import Thread
+from threading import Thread, Timer
+from json.decoder import JSONDecodeError
 
 APPLICATION_PORT = 65412
 logger = logging.getLogger(__name__)
@@ -203,6 +204,7 @@ class Node:
         self.pending_own = None
         self.pending_other = None
         self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname)
+        self.history = []
 
     def send_ui_message(self, message):
         self.outbound_queue.put(message)
@@ -240,12 +242,13 @@ class Node:
                                 self.peer_hosts.add(addr[0])
                                 self.event_queue.put({"type": "info", "content": f"{addr[0]} joined."})
                                 send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.index})
+                            elif message.get("type") == "GET_HISTORY":
+                                send_packet(conn, {"type": "HISTORY",
+                                                    "history": self.history})
                             elif message.get("type") == "PROPOSE":
-                                # Pending has to be time limited in case committing node chrashes
-                                # otherwise the pending will just get stuck
                                 value = ""
                                 if not self.pending_other and self.index == message.get("index"):
-                                    self.pending_other = message.get("message")
+                                    self.pending_other = self.set_pending_message(message.get("message"))
                                     value = "ack"
                                 else:
                                     value = "reject"
@@ -255,13 +258,9 @@ class Node:
                                     "index": message.get("index"),
                                     "sender": self.nickname
                                 })
-                            elif message.get("type") == "DROP":
-                                self.pending_other = None
                             elif message.get("type") == "COMMIT":
-                                # If a node misses commits, it will have the wrong index when
-                                # the next commit arrives. Node requests the missing
-                                # indexes from other nodes?
-                                # HISTORY needed for this
+#                                if message.get("index") != self.index:
+#                                    self.get_history(peer_port, addr[0] #PEER PORT NEEDED HERE
                                 if self.nickname != message.get('sender'):
                                     self.event_queue.put({"type": "others_message", "sender": message.get('sender'), "content": message.get('message')})
                                 logger.debug("Received by %s: %s", message.get('sender'), str(message))
@@ -284,6 +283,7 @@ class Node:
         """
         docstring
         """
+        local_address = gethostbyname(gethostname())
         try:
             with socket(AF_INET, SOCK_STREAM) as s:
                 s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -294,6 +294,8 @@ class Node:
             response = json.loads(data)
             self.peer_hosts.clear()
             self.peer_hosts.update(response.get("nodes", []))
+            self.peer_hosts.remove(local_address) #remove local address
+
             print(f"Connected to {self.peer_hosts}")
 
         except Exception:
@@ -329,6 +331,39 @@ class Node:
         except Exception:
             logger.exception("Failed to send address to peers")
             self.event_queue.put({"type": "error", "content": "Failure to send address to other participants"})
+
+    def get_history(self, peer_port, peer_host, socket=os_socket):
+        if not self.peer_hosts:
+            return
+        else:
+            if not peer_host:
+                host = list(self.peer_hosts)[0]
+            try:
+                with socket(AF_INET, SOCK_STREAM) as s:
+                    s.connect((host, peer_port))
+                    send_packet(s, {"type": "GET_HISTORY"})
+                    data = s.recv(1024)
+
+                response = json.loads(data)
+                self.history = response.get("history")
+                print(self.history)
+
+            except Exception as exc:
+                logger.error("Failed to request history: %s", exc)
+
+    def set_pending_message(self, message, timeout=3):
+        """
+        docstring
+        """
+        self.pending_other = message
+        timer = Timer(timeout, self.clear_pending_message)
+        timer.start()
+
+    def clear_pending_message(self):
+        """
+        docstring
+        """
+        self.pending_other = None
 
     def send_message(self, peer_port, type, socket=os_socket):
         """
@@ -389,10 +424,10 @@ class Node:
         delay = random.uniform(0.1, 0.3) #change this to async?
         time.sleep(delay)
         self.send_message(peer_port, "PROPOSE")
-    
+
     def handle_exception(self, peer_host, exc):
         """
-        Currently only handles connection refused errors. Assumed to be called during an exception 
+        Currently only handles connection refused errors. Assumed to be called during an exception
         in a loop where each peer host is iterated through.
 
         :param peer_host: The peer host which an exception has occurred with.
@@ -436,6 +471,7 @@ if __name__ == '__main__':
 
         node.request_peers(APPLICATION_PORT)
         node.send_address(APPLICATION_PORT)
+        node.get_history(APPLICATION_PORT, None)
 
         # We are creating separate threads for server and client
         # so that they can run at same time. The sockets api is blocking.
