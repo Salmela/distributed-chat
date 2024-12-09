@@ -33,3 +33,31 @@ services:
       - ./logs/:/usr/src/app/logs:rw
     environment:
       LOG_FILE: ./logs/peer3.log
+  peer4:
+    build: ./
+    volumes:
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    environment:
+      LOG_FILE: ./logs/peer4.log
+  peer5:
+    build: ./
+    volumes:
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    environment:
+      LOG_FILE: ./logs/peer5.log
+  peer6:
+    build: ./
+    volumes:
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    environment:
+      LOG_FILE: ./logs/peer6.log
+  peer7:
+    build: ./
+    volumes:
+      - ./:/usr/src/app:ro
+      - ./logs/:/usr/src/app/logs:rw
+    environment:
+      LOG_FILE: ./logs/peer7.log
