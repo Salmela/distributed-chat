@@ -22,7 +22,7 @@ def send_packet(socket, data):
     socket.sendall(json.dumps(data).encode())
 
 class UserInterface:
-    def __init__(self, event_queue, send_message, nickname):
+    def __init__(self, event_queue, send_message, nickname, history):
         self.buffer = ""
         self.cursor = 0
         self.scroll = 0
@@ -31,6 +31,7 @@ class UserInterface:
         self.send_message = send_message
         self.exited = False
         self.nickname = nickname
+        self.ui_history = history
 
     def print_footer(self):
         size = os.get_terminal_size()
@@ -52,6 +53,9 @@ class UserInterface:
             sys.stdout.write(f"\033[{index + offset + 1};1H")
             sys.stdout.write(line)
         sys.stdout.flush()
+
+    def print_history(self):
+        return
 
     def run(self):
         if os.name == 'nt':
@@ -75,6 +79,7 @@ class UserInterface:
             tty.setraw(sys.stdin)
             self.print_messages()
             self.print_footer()
+#            self.print_history()
 
             thread = Thread(target=self.run_input_listener, name="input")
             thread.start()
@@ -208,15 +213,15 @@ class Node:
         self.index = 0
         self.pending_own = None
         self.pending_other = None
-        self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname)
         self.history = []
+        self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname, self.history)
 
     def send_ui_message(self, message):
         """
         Function for printing messages in the user interface.
 
         Args:
-        message (str): ?.
+        message (str): Message to send.
         """
         self.outbound_queue.put(message)
         if not self.pending_own:
@@ -257,7 +262,7 @@ class Node:
                                                       "content": f"Server connected to {self.peer_hosts}"})
                             elif message.get("type") == "NEW_NODE":
                                 self.peer_hosts.add(addr[0])
-                                self.event_queue.put({"type": "info", "content": f"{addr[0]} joined."})
+                                self.event_queue.put({"type": "info", "content": f"{message.get("nickname")} joined."})
                                 send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.index})
                             elif message.get("type") == "GET_HISTORY":
                                 send_packet(conn, {"type": "HISTORY",
@@ -349,7 +354,7 @@ class Node:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
                         s.connect((peer_host, peer_port))
-                        send_packet(s, {"type": "NEW_NODE"})
+                        send_packet(s, {"type": "NEW_NODE", "nickname": self.nickname})
                         data = s.recv(1024)
                         try:
                             response = json.loads(data)
