@@ -194,7 +194,7 @@ class UserInterface:
 
 class Node:
     """
-        docstring
+        Class for creating a node in the system.
     """
     def __init__(self, hosts, nickname):
         self.event_queue = queue.Queue()
@@ -212,14 +212,26 @@ class Node:
         self.history = []
 
     def send_ui_message(self, message):
+        """
+        Function for printing messages in the user interface.
+
+        Args:
+        message (str): ?.
+        """
         self.outbound_queue.put(message)
         if not self.pending_own:
             self.pending_own = self.outbound_queue.get(message)
             self.send_message(APPLICATION_PORT, "PROPOSE")
 
-    def start_server(self, socket=os_socket):
+    def start_server(self, peer_port, socket=os_socket):
         """
-        docstring
+        Starts server. Receives different message types.
+
+        Args:
+        socket (type): Socket module.
+
+        Raises:
+        Exception: If the connection fails.
         """
         try:
             with socket(AF_INET, SOCK_STREAM) as s:
@@ -241,7 +253,8 @@ class Node:
                             if message.get("type") == "GET_NODES":
                                 send_packet(conn, {"nodes": list(self.peer_hosts)})
                                 self.peer_hosts.add(addr[0])
-                                self.event_queue.put({"type": "info", "content": f"Server connected to {self.peer_hosts}"})
+                                self.event_queue.put({"type": "info",
+                                                      "content": f"Server connected to {self.peer_hosts}"})
                             elif message.get("type") == "NEW_NODE":
                                 self.peer_hosts.add(addr[0])
                                 self.event_queue.put({"type": "info", "content": f"{addr[0]} joined."})
@@ -250,8 +263,6 @@ class Node:
                                 send_packet(conn, {"type": "HISTORY",
                                                     "history": self.history})
                             elif message.get("type") == "PROPOSE":
-                                # Pending has to be time limited in case committing node chrashes
-                                # otherwise the pending will just get stuck
                                 if not self.pending_other and self.index == message.get("index"):
                                     self.pending_other = self.set_pending_message(message.get("message"))
                                     value = "ack"
@@ -264,13 +275,15 @@ class Node:
                                     "sender": self.nickname
                                 })
                             elif message.get("type") == "COMMIT":
-#                                if message.get("index") != self.index:
-#                                    self.get_history(peer_port, addr[0] #PEER PORT NEEDED HERE
+                                if message.get("index") != self.index:
+                                    self.get_history(peer_port, addr[0])
                                 self.history.append({"index": message.get("index"),
                                                      "sender": message.get("sender"),
                                                      "message": message.get("message")})
                                 if self.nickname != message.get('sender'):
-                                    self.event_queue.put({"type": "others_message", "sender": message.get('sender'), "content": message.get('message')})
+                                    self.event_queue.put({"type": "others_message",
+                                                          "sender": message.get('sender'),
+                                                          "content": message.get('message')})
                                 logger.debug("Received by %s: %s", message.get('sender'), str(message))
                                 formatted_message = (
                                     f"Received {message['message']} "
@@ -289,7 +302,14 @@ class Node:
 
     def request_peers(self, peer_port, socket=os_socket):
         """
-        docstring
+        Requests peers from the startup server. Sets peers.
+
+        Args:
+        peer_port (int): Application port number.
+        socket (type): Socket module.
+
+        Raises:
+        Exception: If the connection fails.
         """
         local_address = gethostbyname(gethostname())
         try:
@@ -312,7 +332,15 @@ class Node:
 
     def send_address(self, peer_port, socket=os_socket):
         """
-        docstring
+        Sends address to all peers and receives indexes. Sets index.
+
+        Args:
+        peer_port (int): Application port number.
+        socket (type): Socket module.
+
+        Raises:
+        JSONDecodeError: If the response data is invalid.
+        Exception: If the connection fails.
         """
         index = []
         try:
@@ -338,9 +366,21 @@ class Node:
 
         except Exception:
             logger.exception("Failed to send address to peers")
-            self.event_queue.put({"type": "error", "content": "Failure to send address to other participants"})
+            self.event_queue.put({"type": "error",
+                                  "content": "Failure to send address to other participants"})
 
     def get_history(self, peer_port, peer_host, socket=os_socket):
+        """
+        Requests message history from a peer. Sets history.
+
+        Args:
+        peer_port (int): Application port number.
+        peer_host (str): The request is send to this peer.
+        socket (type): Socket module.
+
+        Raises:
+        Exception: If the connection fails.
+        """
         if not self.peer_hosts:
             return
         else:
@@ -360,7 +400,11 @@ class Node:
 
     def set_pending_message(self, message, timeout=3):
         """
-        docstring
+        Sets incoming pending message.
+
+        Args:
+        message(str): The message which is set as pending.
+        timeout (int): The timeout for the pending message.
         """
         self.pending_other = message
         timer = Timer(timeout, self.clear_pending_message)
@@ -368,13 +412,21 @@ class Node:
 
     def clear_pending_message(self):
         """
-        docstring
+        Clears incoming pending message.
         """
         self.pending_other = None
 
     def send_message(self, peer_port, type, socket=os_socket):
         """
-        docstring
+        Issues a message. Receives acknowledgements, rejects and ack_commits.
+
+        Args:
+        peer_port (int): Application port number.
+        type (str): Message type.
+        socket (type): Socket module.
+
+        Raises:
+        Exception: If the connection fails.
         """
         try:
             for peer_host in self.peer_hosts:
@@ -398,12 +450,15 @@ class Node:
                                 self.rejects += 1
 
                         if response.get("type") == "ACK_COMMIT":
-                            self.event_queue.put({"type": "ack", "message": response.get('message'), "sender": response.get('sender')})
+                            self.event_queue.put({"type": "ack",
+                                                  "message": response.get('message'),
+                                                  "sender": response.get('sender')})
 
                         logger.debug("Sent by %s: %s", self.nickname, str(response))
                 except Exception as exc:
                     self.handle_exception(peer_host, exc)
-                    self.event_queue.put({"type": "error", "content": "Failed to propose message to peers"})
+                    self.event_queue.put({"type": "error",
+                                          "content": "Failed to propose message to peers"})
 
             self.update_peer_hosts()
 
@@ -414,17 +469,25 @@ class Node:
 
         except Exception:
             logger.exception("Failed to propose message to peers")
-            self.event_queue.put({"type": "error", "content": "Failed to propose message to peers"})
+            self.event_queue.put({"type": "error",
+                                  "content": "Failed to propose message to peers"})
 
     def handle_responses(self, peer_port):
         """
-        docstring
+        Handles acknowledges and rejects. Issues a commit message.
+        Issues a new propose message.
+
+        Args:
+        peer_port (int): Application port number.
         """
         if self.acks + self.rejects == len(self.peer_hosts):
             if self.acks > self.rejects:
                 self.send_message(peer_port, "COMMIT")
-                self.event_queue.put({"type": "own_message", "content": self.pending_own})
-                self.history.append({"index": self.index, "sender": self.nickname, "message": self.pending_own})
+                self.event_queue.put({"type": "own_message",
+                                      "content": self.pending_own})
+                self.history.append({"index": self.index,
+                                     "sender": self.nickname,
+                                     "message": self.pending_own})
                 self.index += 1
                 self.pending_own = None
                 return
@@ -435,14 +498,15 @@ class Node:
 
     def handle_exception(self, peer_host, exc):
         """
-        Currently only handles connection refused errors. Assumed to be called during an exception
-        in a loop where each peer host is iterated through.
+        Handles connection refused errors.
 
-        :param peer_host: The peer host which an exception has occurred with.
-        :param exc: The exception raised.
+        Args:
+        peer_host: The peer host which an exception has occurred with.
+        exc: The exception raised.
         """
         if "Connection refused" in str(exc):
-            self.event_queue.put({"type": "info", "content": f"{peer_host} has disconnected."})
+            self.event_queue.put({"type": "info",
+                                  "content": f"{peer_host} has disconnected."})
             logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
             self.inactive_hosts.add(peer_host)
 
@@ -486,5 +550,5 @@ if __name__ == '__main__':
         thread = Thread(target=node.ui.run, args=[], name="ui")
         thread.start()
 
-    thread = Thread(target=node.start_server, args=[], name="server")
+    thread = Thread(target=node.start_server, args=[APPLICATION_PORT], name="server")
     thread.start()
