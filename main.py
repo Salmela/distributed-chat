@@ -262,7 +262,7 @@ class Node:
                                                       "content": f"Server connected to {self.peer_hosts}"})
                             elif message.get("type") == "NEW_NODE":
                                 self.peer_hosts.add(addr[0])
-                                self.event_queue.put({"type": "info", "content": f"{message.get("nickname")} joined."})
+                                self.event_queue.put({"type": "info", "content": f"{message.get('nickname')} joined."})
                                 send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.index})
                             elif message.get("type") == "GET_HISTORY":
                                 send_packet(conn, {"type": "HISTORY",
