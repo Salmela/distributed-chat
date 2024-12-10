@@ -24,7 +24,7 @@ def send_packet(socket, data):
 def hash_func(nickname):
     total = 0
     for letter in list(nickname):
-        total = total * 257 + ord(letter) % 2147483647
+        total = (total * 257 + ord(letter)) % 2147483647
     return total
 
 
