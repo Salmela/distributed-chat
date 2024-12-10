@@ -21,6 +21,13 @@ logging.basicConfig(filename=os.environ.get('LOG_FILE', "chat.log"),
 def send_packet(socket, data):
     socket.sendall(json.dumps(data).encode())
 
+def hash_func(nickname):
+    total = 0
+    for letter in list(nickname):
+        total = total * 257 + ord(letter) % 2147483647
+    return total
+
+
 class UserInterface:
     def __init__(self, event_queue, send_message, nickname, history):
         self.buffer = ""
@@ -118,7 +125,7 @@ class UserInterface:
                     self.content.append(event["content"])
                 elif event["type"] == "own_message":
                     size = os.get_terminal_size()
-                    color = hash(self.nickname) % 7
+                    color = hash_func(self.nickname) % 7
                     content = event['content']
                     first = True
                     while content:
@@ -130,7 +137,7 @@ class UserInterface:
                             self.content.append(f"{' ' * len(self.nickname)}  {event['content']}")
                         first = False
                 elif event["type"] == "others_message":
-                    color = hash(event['sender']) % 7
+                    color = hash_func(event['sender']) % 7
                     self.content.append(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
 
                 # refresh screen content after every event
@@ -178,7 +185,7 @@ class UserInterface:
                 print(event["content"])
             elif event["type"] == "own_message":
                 size = os.get_terminal_size()
-                color = hash(self.nickname) % 7
+                color = hash_func(self.nickname) % 7
                 content = event['content']
                 first = True
                 while content:
@@ -190,7 +197,7 @@ class UserInterface:
                         print(f"{' ' * len(self.nickname)}  {event['content']}")
                     first = False
             elif event["type"] == "others_message":
-                color = hash(event['sender']) % 7
+                color = hash_func(event['sender']) % 7
                 print(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
 
 
