@@ -257,11 +257,12 @@ class Node:
 
                             if message.get("type") == "GET_NODES":
                                 send_packet(conn, {"nodes": list(self.peer_hosts)})
-                                self.peer_hosts.add(addr[0])
+                                self.peer_hosts = {i for i in self.peer_hosts if i[0] != addr[0]}
+                                self.peer_hosts.add((addr[0], message.get("nickname")))
                                 self.event_queue.put({"type": "info",
                                                       "content": f"Server connected to {self.peer_hosts}"})
                             elif message.get("type") == "NEW_NODE":
-                                self.peer_hosts.add(addr[0])
+                                self.peer_hosts.add((addr[0], message.get("nickname")))
                                 self.event_queue.put({"type": "info", "content": f"{message.get('nickname')} joined."})
                                 send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.index})
                             elif message.get("type") == "GET_HISTORY":
@@ -321,19 +322,24 @@ class Node:
             with socket(AF_INET, SOCK_STREAM) as s:
                 s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
                 s.connect((list(self.peer_hosts)[0], peer_port))
-                send_packet(s, {"type": "GET_NODES"})
+                send_packet(s, {"type": "GET_NODES", "nickname": self.nickname})
                 data = s.recv(1024)
 
             response = json.loads(data)
             self.peer_hosts.clear()
-            self.peer_hosts.update(response.get("nodes", []))
-            self.peer_hosts.discard(local_address) #remove local address
+            converted_nodes_list = [tuple(inner_list) for inner_list in response.get("nodes", [])]
+            self.peer_hosts.update(converted_nodes_list)
+            self.peer_hosts = {i for i in self.peer_hosts if i[0] != local_address}
 
-            print(f"Connected to {self.peer_hosts}")
+            connected_to = []
+            for i in self.peer_hosts:
+                connected_to.append(i[1])
+            print(f"Connected to {connected_to}")
 
         except Exception:
             logger.exception("Failed to request peers")
             self.event_queue.put({"type": "error", "content": "Failure on peer request"})
+
 
     def send_address(self, peer_port, socket=os_socket):
         """
@@ -353,7 +359,7 @@ class Node:
                 try:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                        s.connect((peer_host, peer_port))
+                        s.connect((peer_host[0], peer_port))
                         send_packet(s, {"type": "NEW_NODE", "nickname": self.nickname})
                         data = s.recv(1024)
                         try:
@@ -393,7 +399,7 @@ class Node:
                 host = list(self.peer_hosts)[0]
             try:
                 with socket(AF_INET, SOCK_STREAM) as s:
-                    s.connect((host, peer_port))
+                    s.connect((host[0], peer_port))
                     send_packet(s, {"type": "GET_HISTORY"})
                     data = s.recv(1024)
 
@@ -438,7 +444,7 @@ class Node:
                 try:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                        s.connect((peer_host, peer_port))
+                        s.connect((peer_host[0], peer_port))
                         send_packet(s, {
                             "type": type,
                             "index": self.index,
@@ -462,8 +468,6 @@ class Node:
                         logger.debug("Sent by %s: %s", self.nickname, str(response))
                 except Exception as exc:
                     self.handle_exception(peer_host, exc)
-                    self.event_queue.put({"type": "error",
-                                          "content": "Failed to propose message to peers"})
 
             self.update_peer_hosts()
 
@@ -511,7 +515,7 @@ class Node:
         """
         if "Connection refused" in str(exc):
             self.event_queue.put({"type": "info",
-                                  "content": f"{peer_host} has disconnected."})
+                                  "content": f"{peer_host[1]} has disconnected."})
             logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
             self.inactive_hosts.add(peer_host)
 
