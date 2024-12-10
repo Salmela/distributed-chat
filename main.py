@@ -44,9 +44,6 @@ class UserInterface:
     def print_messages(self):
         size = os.get_terminal_size()
         sys.stdout.write(f"\033[1;1H")
-        logger.info("content: %d - %d - %d" % (len(self.content), self.scroll, (size.lines - 2)))
-        logger.info("scroll: %d" % (len(self.content) - self.scroll - (size.lines - 2)))
-        logger.info("lines; %d" % size.lines)
         start = len(self.content) - self.scroll - (size.lines - 2)
         offset = -start if start < 0 else 0
         for index, line in enumerate(self.content[max(0, start):][:size.lines - 2]):
@@ -404,7 +401,23 @@ class Node:
                     data = s.recv(1024)
 
                 response = json.loads(data)
+                old_history = self.history
+                try:
+                    last_index = old_history[-1]["index"]
+                except IndexError:
+                    last_index = -1
                 self.history = response.get("history")
+                new_items = [item for item in self.history if item["index"] > last_index]
+
+                for message in new_items:
+                    if self.nickname == message.get('sender'):
+                        self.event_queue.put({"type": "own_message",
+                                              "sender": message.get('sender'),
+                                              "content": message.get('message')})
+                    else:
+                        self.event_queue.put({"type": "others_message",
+                                              "sender": message.get('sender'),
+                                              "content": message.get('message')})
 
             except Exception as exc:
                 logger.error("Failed to request history: %s", exc)
