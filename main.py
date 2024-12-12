@@ -2,7 +2,7 @@
 
 from socket import (
     AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR,
-    gethostname, gethostbyname, socket as os_socket
+    gethostname, gethostbyname, socket
 )
 import tty
 import termios
@@ -21,8 +21,20 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(filename=os.environ.get('LOG_FILE', "chat.log"),
                     level=logging.DEBUG, format="%(asctime)s - %(message)s")
 
-def send_packet(data):
+def send_packet(socket, data):
     socket.sendall(json.dumps(data).encode())
+
+def send_packet_to_peer(address, data):
+    with socket(AF_INET, SOCK_STREAM) as s:
+        s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        s.connect((address, APPLICATION_PORT))
+        send_packet(s, data)
+        data = s.recv(1024)
+    try:
+        return json.loads(data)
+    except JSONDecodeError:
+        logger.error("Invalid response data: " + data)
+        raise
 
 def hash_func(nickname):
     total = 0
@@ -219,10 +231,10 @@ class Node:
         self.history = []
         self.next_message_index = 0
 
-        # User interface component
-        self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname)
         # Queue for communicating with ui
         self.event_queue = queue.Queue()
+        # User interface component
+        self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname)
 
     def send_ui_message(self, message):
         """
@@ -234,7 +246,7 @@ class Node:
         self.outbound_queue.put(message)
         if not self.pending_own:
             self.pending_own = self.outbound_queue.get(message)
-            self.send_message(APPLICATION_PORT, "PROPOSE")
+            self.send_message("PROPOSE")
 
     def start_server(self):
         """
@@ -284,7 +296,7 @@ class Node:
                                 })
                             elif message.get("type") == "COMMIT":
                                 if message.get("index") != self.next_message_index:
-                                    self.get_history(APPLICATION_PORT, addr[0])
+                                    self.get_history(addr[0])
                                 self.history.append({"index": message.get("index"),
                                                      "sender": message.get("sender"),
                                                      "message": message.get("message")})
@@ -317,13 +329,8 @@ class Node:
         """
         local_address = gethostbyname(gethostname())
         try:
-            with socket(AF_INET, SOCK_STREAM) as s:
-                s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                s.connect((list(self.peer_hosts)[0], APPLICATION_PORT))
-                send_packet(s, {"type": "GET_NODES", "nickname": self.nickname})
-                data = s.recv(1024)
+            response = send_packet_to_peer(list(self.peer_hosts)[0], {"type": "GET_NODES", "nickname": self.nickname})
 
-            response = json.loads(data)
             self.peer_hosts.clear()
             converted_nodes_list = [tuple(inner_list) for inner_list in response.get("nodes", [])]
             self.peer_hosts.update(converted_nodes_list)
@@ -351,18 +358,8 @@ class Node:
         try:
             for peer_host in self.peer_hosts:
                 try:
-                    with socket(AF_INET, SOCK_STREAM) as s:
-                        s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                        s.connect((peer_host[0], APPLICATION_PORT))
-                        send_packet(s, {"type": "NEW_NODE", "nickname": self.nickname})
-                        data = s.recv(1024)
-                        try:
-                            response = json.loads(data)
-                        except JSONDecodeError:
-                            logger.error("Invalid response data: " + data)
-                            raise
-
-                        next_message_indices.append(response.get("index"))
+                    response = send_packet_to_peer(peer_host[0], {"type": "NEW_NODE", "nickname": self.nickname})
+                    next_message_indices.append(response.get("index"))
                 except Exception as exc:
                     self.handle_exception(peer_host, exc)
 
@@ -390,12 +387,7 @@ class Node:
             if not peer_host:
                 host = list(self.peer_hosts)[0]
             try:
-                with socket(AF_INET, SOCK_STREAM) as s:
-                    s.connect((host[0], APPLICATION_PORT))
-                    send_packet(s, {"type": "GET_HISTORY"})
-                    data = s.recv(1024)
-
-                response = json.loads(data)
+                response = send_packet_to_peer(host[0], {"type": "GET_HISTORY"})
                 old_history = self.history
                 try:
                     last_message_index = old_history[-1]["index"]
@@ -427,7 +419,7 @@ class Node:
         """
         self.pending_other = message
 
-        def clear_pending_message(self):
+        def clear_pending_message():
             self.pending_other = None
 
         # TODO: This feels bit wrong (race conditions)
@@ -447,37 +439,32 @@ class Node:
         try:
             for peer_host in self.peer_hosts:
                 try:
-                    with socket(AF_INET, SOCK_STREAM) as s:
-                        s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                        s.connect((peer_host[0], APPLICATION_PORT))
-                        send_packet(s, {
-                            "type": type,
-                            "index": self.next_message_index,
-                            "message": self.pending_own,
-                            "sender": self.nickname
-                        })
-                        data = s.recv(1024)
-                        response = json.loads(data)
+                    response = send_packet_to_peer(peer_host[0], {
+                        "type": type,
+                        "index": self.next_message_index,
+                        "message": self.pending_own,
+                        "sender": self.nickname
+                    })
 
-                        if response.get("type") == "RESPONSE":
-                            if response.get("value") == "ack":
-                                self.acks += 1
-                            elif response.get("value") == "reject":
-                                self.rejects += 1
+                    if response.get("type") == "RESPONSE":
+                        if response.get("value") == "ack":
+                            self.acks += 1
+                        elif response.get("value") == "reject":
+                            self.rejects += 1
 
-                        if response.get("type") == "ACK_COMMIT":
-                            self.event_queue.put({"type": "ack",
-                                                  "message": response.get('message'),
-                                                  "sender": response.get('sender')})
+                    if response.get("type") == "ACK_COMMIT":
+                        self.event_queue.put({"type": "ack",
+                                              "message": response.get('message'),
+                                              "sender": response.get('sender')})
 
-                        logger.debug("Sent by %s: %s", self.nickname, str(response))
+                    logger.debug("Sent by %s: %s", self.nickname, str(response))
                 except Exception as exc:
                     self.handle_exception(peer_host, exc)
 
             self.update_peer_hosts()
 
             if type == "PROPOSE":
-                self.handle_responses(APPLICATION_PORT)
+                self.handle_responses()
                 self.acks = 0
                 self.rejects = 0
 
@@ -493,7 +480,7 @@ class Node:
         """
         majority_agreement = self.acks > len(self.peer_hosts) / 2
         if majority_agreement:
-            self.send_message(APPLICATION_PORT, "COMMIT")
+            self.send_message("COMMIT")
             self.event_queue.put({"type": "user_message",
                                   "sender": self.nickname,
                                   "content": self.pending_own})
@@ -506,7 +493,7 @@ class Node:
             # Retry
             delay = random.uniform(0.1, 0.3)
             time.sleep(delay)
-            self.send_message(APPLICATION_PORT, "PROPOSE")
+            self.send_message("PROPOSE")
 
     def handle_exception(self, peer_host, exc):
         """
