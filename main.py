@@ -268,57 +268,61 @@ class Node:
                             if not data:
                                 break
                             message = json.loads(data)
-
-                            if message.get("type") == "GET_NODES":
-                                send_packet(conn, {"nodes": list(self.peer_hosts)})
-                                self.peer_hosts = {i for i in self.peer_hosts if i[0] != addr[0]}
-                                self.peer_hosts.add((addr[0], message.get("nickname")))
-                                self.event_queue.put({"type": "info",
-                                                      "content": f"Server connected to {self.peer_hosts}"})
-                            elif message.get("type") == "NEW_NODE":
-                                self.peer_hosts.add((addr[0], message.get("nickname")))
-                                self.event_queue.put({"type": "info", "content": f"{message.get('nickname')} joined."})
-                                send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.next_message_index})
-                            elif message.get("type") == "GET_HISTORY":
-                                send_packet(conn, {"type": "HISTORY",
-                                                    "history": self.history})
-                            elif message.get("type") == "PROPOSE":
-                                if not self.pending_other and self.next_message_index == message.get("index"):
-                                    self.pending_other = self.set_pending_message(message.get("message"))
-                                    value = "ack"
-                                else:
-                                    value = "reject"
-                                send_packet(conn, {
-                                    "type": "RESPONSE",
-                                    "value": value,
-                                    "index": message.get("index"),
-                                    "sender": self.nickname
-                                })
-                            elif message.get("type") == "COMMIT":
-                                if message.get("index") != self.next_message_index:
-                                    self.get_history(addr[0])
-                                self.history.append({"index": message.get("index"),
-                                                     "sender": message.get("sender"),
-                                                     "message": message.get("message")})
-                                if self.nickname != message.get('sender'):
-                                    self.event_queue.put({"type": "user_message",
-                                                          "sender": message.get('sender'),
-                                                          "content": message.get('message')})
-                                logger.debug("Received by %s: %s", message.get('sender'), str(message))
-                                formatted_message = (
-                                    f"Received {message['message']} "
-                                    f"from {message['sender']}"
-                                )
-                                ack_commit = {"type": "ACK_COMMIT",
-                                              "message": formatted_message,
-                                              "sender": self.nickname}
-                                send_packet(conn, ack_commit)
-                                self.pending_other = None
-                                self.next_message_index = message.get('index') + 1
-                                logger.debug("%s sent ack %s", self.nickname, ack_commit)
+                            self.handle_request(conn, addr, message)
         except Exception:
             logger.exception("Server thread")
             self.event_queue.put({"type": "error", "content": "Server thread error"})
+
+    def handle_request(self, conn, addr, message):
+        if message.get("type") == "GET_NODES":
+            send_packet(conn, {"nodes": list(self.peer_hosts)})
+            self.peer_hosts = {i for i in self.peer_hosts if i[0] != addr[0]}
+            self.peer_hosts.add((addr[0], message.get("nickname")))
+            self.event_queue.put({"type": "info",
+                                  "content": f"Server connected to {self.peer_hosts}"})
+        elif message.get("type") == "NEW_NODE":
+            self.peer_hosts.add((addr[0], message.get("nickname")))
+            self.event_queue.put({"type": "info", "content": f"{message.get('nickname')} joined."})
+            send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.next_message_index})
+        elif message.get("type") == "GET_HISTORY":
+            send_packet(conn, {"type": "HISTORY",
+                                "history": self.history})
+        elif message.get("type") == "PROPOSE":
+            if not self.pending_other and self.next_message_index == message.get("index"):
+                self.pending_other = self.set_pending_message(message.get("message"))
+                value = "ack"
+            else:
+                value = "reject"
+            send_packet(conn, {
+                "type": "RESPONSE",
+                "value": value,
+                "index": message.get("index"),
+                "sender": self.nickname
+            })
+        elif message.get("type") == "COMMIT":
+            if message.get("index") != self.next_message_index:
+                self.get_history(addr[0])
+            self.history.append({"index": message.get("index"),
+                                 "sender": message.get("sender"),
+                                 "message": message.get("message")})
+            if self.nickname != message.get('sender'):
+                self.event_queue.put({"type": "user_message",
+                                      "sender": message.get('sender'),
+                                      "content": message.get('message')})
+            logger.debug("Received by %s: %s", message.get('sender'), str(message))
+            formatted_message = (
+                f"Received {message['message']} "
+                f"from {message['sender']}"
+            )
+            ack_commit = {"type": "ACK_COMMIT",
+                          "message": formatted_message,
+                          "sender": self.nickname}
+            send_packet(conn, ack_commit)
+            self.pending_other = None
+            self.next_message_index = message.get('index') + 1
+            logger.debug("%s sent ack %s", self.nickname, ack_commit)
+        else:
+            logger.debug("Unknown %s type", message.get("type"))
 
     def request_peers(self):
         """
@@ -397,14 +401,9 @@ class Node:
                 new_items = [item for item in self.history if item["index"] > last_message_index]
 
                 for message in new_items:
-                    if self.nickname == message.get('sender'):
-                        self.event_queue.put({"type": "user_message",
-                                              "sender": message.get('sender'),
-                                              "content": message.get('message')})
-                    else:
-                        self.event_queue.put({"type": "user_message",
-                                              "sender": message.get('sender'),
-                                              "content": message.get('message')})
+                    self.event_queue.put({"type": "user_message",
+                                          "sender": message.get('sender'),
+                                          "content": message.get('message')})
 
             except Exception as exc:
                 logger.error("Failed to request history: %s", exc)
@@ -521,22 +520,21 @@ class Node:
             logger.debug(f'Inactive hosts removed from list of peer hosts. Current peer hosts: {self.peer_hosts}')
 
 # Only run this code if the file was executed from command line
-if __name__ == '__main__':
-
-    if '--help' in sys.argv:
+def main(args):
+    if '--help' in args:
         print("Start the startup server:")
-        print(f"Usage: {sys.argv[0]} startup")
+        print(f"Usage: {args[0]} startup")
         print("Start the application:")
-        print(f"Usage: {sys.argv[0]} [STARTUP SERVER NAME]")
+        print(f"Usage: {args[0]} [STARTUP SERVER NAME]")
         exit(-1)
 
-    if len(sys.argv) > 1 and sys.argv[1] == "startup":
+    if len(args) > 1 and args[1] == "startup":
         logger.info('Starting startup server')
         peer_hosts =  []
         node = Node(peer_hosts, "startup_server")
     else:
         logger.info('Starting peer node')
-        peer_hosts = sys.argv[1:] if len(sys.argv) > 1 else ["startup_server"]
+        peer_hosts = args[1:] if len(args) > 1 else ["startup_server"]
         nickname = input("Set nickname: ")
         node = Node(peer_hosts, nickname)
 
@@ -551,3 +549,7 @@ if __name__ == '__main__':
 
     thread = Thread(target=node.start_server, args=[], name="server")
     thread.start()
+
+# Only run this code if the file was executed from command line
+if __name__ == '__main__':
+    main(sys.argv)
