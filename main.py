@@ -1,6 +1,9 @@
 #!/bin/python3
 
-from socket import AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, gethostname, gethostbyname, socket as os_socket
+from socket import (
+    AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR,
+    gethostname, gethostbyname, socket as os_socket
+)
 import tty
 import termios
 import os
@@ -18,7 +21,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(filename=os.environ.get('LOG_FILE', "chat.log"),
                     level=logging.DEBUG, format="%(asctime)s - %(message)s")
 
-def send_packet(socket, data):
+def send_packet(data):
     socket.sendall(json.dumps(data).encode())
 
 def hash_func(nickname):
@@ -29,7 +32,7 @@ def hash_func(nickname):
 
 
 class UserInterface:
-    def __init__(self, event_queue, send_message, nickname, history):
+    def __init__(self, event_queue, send_message, nickname):
         self.buffer = ""
         self.cursor = 0
         self.scroll = 0
@@ -38,7 +41,6 @@ class UserInterface:
         self.send_message = send_message
         self.exited = False
         self.nickname = nickname
-        self.ui_history = history
 
     def print_footer(self):
         size = os.get_terminal_size()
@@ -57,9 +59,6 @@ class UserInterface:
             sys.stdout.write(f"\033[{index + offset + 1};1H")
             sys.stdout.write(line)
         sys.stdout.flush()
-
-    def print_history(self):
-        return
 
     def run(self):
         if os.name == 'nt':
@@ -83,7 +82,6 @@ class UserInterface:
             tty.setraw(sys.stdin)
             self.print_messages()
             self.print_footer()
-#            self.print_history()
 
             thread = Thread(target=self.run_input_listener, name="input")
             thread.start()
@@ -117,28 +115,23 @@ class UserInterface:
                     else:
                         self.buffer += new_char
                         self.cursor += 1
-                        # self.buffer += str(ord(new_char[0]))
-                        # self.cursor += len(str(ord(new_char[0])))
                 elif event["type"] == "error":
                     self.content.append("\033[1m\033[31m" + event["content"] + "\033[0m")
                 elif event["type"] == "info":
-                    self.content.append(event["content"])
-                elif event["type"] == "own_message":
+                    self.content.append("\033[1m\033[90m" + event["content"] + "\033[0m")
+                elif event["type"] == "user_message":
                     size = os.get_terminal_size()
-                    color = hash_func(self.nickname) % 7
+                    color = hash_func(event['sender']) % 7
                     content = event['content']
                     first = True
                     while content:
                         line = content[:size.columns]
                         content = content[size.columns:]
                         if first:
-                            self.content.append(f"\033[9{color}m{self.nickname}\033[0m: {event['content']}")
+                            self.content.append(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
                         else:
-                            self.content.append(f"{' ' * len(self.nickname)}  {event['content']}")
+                            self.content.append(f"{' ' * len(event['sender'])}  {event['content']}")
                         first = False
-                elif event["type"] == "others_message":
-                    color = hash_func(event['sender']) % 7
-                    self.content.append(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
 
                 # refresh screen content after every event
                 sys.stdout.write("\033[1;1H\033[0J")
@@ -155,7 +148,7 @@ class UserInterface:
             termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, tty_attrs)
             os._exit(0)
 
-    def run_plain(self, input=input):
+    def run_plain(self):
         """
         The fallback ui for windows
         """
@@ -183,42 +176,53 @@ class UserInterface:
                 print("\033[1m\033[31m" + event["content"] + "\033[0m")
             elif event["type"] == "info":
                 print(event["content"])
-            elif event["type"] == "own_message":
+            elif event["type"] == "user_message":
                 size = os.get_terminal_size()
-                color = hash_func(self.nickname) % 7
+                color = hash_func(event['sender']) % 7
                 content = event['content']
                 first = True
                 while content:
                     line = content[:size.columns]
                     content = content[size.columns:]
                     if first:
-                        print(f"\033[9{color}m{self.nickname}\033[0m: {event['content']}")
+                        print(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
                     else:
-                        print(f"{' ' * len(self.nickname)}  {event['content']}")
+                        print(f"{' ' * len(event['sender'])}  {event['content']}")
                     first = False
-            elif event["type"] == "others_message":
-                color = hash_func(event['sender']) % 7
-                print(f"\033[9{color}m{event['sender']}\033[0m: {event['content']}")
 
 
 class Node:
     """
-        Class for creating a node in the system.
+    The main code for communicating with other nodes
     """
     def __init__(self, hosts, nickname):
-        self.event_queue = queue.Queue()
-        self.incoming_queue = queue.Queue()
-        self.outbound_queue = queue.Queue()
+        # Other nodes currently joined to chat
         self.peer_hosts = set(hosts)
         self.inactive_hosts = set()
+
+        # Our name that is visible to us and other nodes
         self.nickname = nickname
+
+        # Message that we are trying to send
+        self.pending_own = None
+        # Other messages that we want to commit after the current one
+        self.outbound_queue = queue.Queue()
+
+        # Current voting results for our own pending message
         self.acks = 0
         self.rejects = 0
-        self.index = 0
-        self.pending_own = None
+
+        # Message that is being proposed for log currently
         self.pending_other = None
+
+        # Log of commited messages
         self.history = []
-        self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname, self.history)
+        self.next_message_index = 0
+
+        # User interface component
+        self.ui = UserInterface(self.event_queue, self.send_ui_message, nickname)
+        # Queue for communicating with ui
+        self.event_queue = queue.Queue()
 
     def send_ui_message(self, message):
         """
@@ -232,12 +236,9 @@ class Node:
             self.pending_own = self.outbound_queue.get(message)
             self.send_message(APPLICATION_PORT, "PROPOSE")
 
-    def start_server(self, peer_port, socket=os_socket):
+    def start_server(self):
         """
         Starts server. Receives different message types.
-
-        Args:
-        socket (type): Socket module.
 
         Raises:
         Exception: If the connection fails.
@@ -254,10 +255,7 @@ class Node:
                             data = conn.recv(1024)
                             if not data:
                                 break
-                            data = json.loads(data)
-
-                            self.incoming_queue.put(data)
-                            message = self.incoming_queue.get()
+                            message = json.loads(data)
 
                             if message.get("type") == "GET_NODES":
                                 send_packet(conn, {"nodes": list(self.peer_hosts)})
@@ -268,12 +266,12 @@ class Node:
                             elif message.get("type") == "NEW_NODE":
                                 self.peer_hosts.add((addr[0], message.get("nickname")))
                                 self.event_queue.put({"type": "info", "content": f"{message.get('nickname')} joined."})
-                                send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.index})
+                                send_packet(conn, {"type": "SYSTEM_INDEX", "index": self.next_message_index})
                             elif message.get("type") == "GET_HISTORY":
                                 send_packet(conn, {"type": "HISTORY",
                                                     "history": self.history})
                             elif message.get("type") == "PROPOSE":
-                                if not self.pending_other and self.index == message.get("index"):
+                                if not self.pending_other and self.next_message_index == message.get("index"):
                                     self.pending_other = self.set_pending_message(message.get("message"))
                                     value = "ack"
                                 else:
@@ -285,13 +283,13 @@ class Node:
                                     "sender": self.nickname
                                 })
                             elif message.get("type") == "COMMIT":
-                                if message.get("index") != self.index:
-                                    self.get_history(peer_port, addr[0])
+                                if message.get("index") != self.next_message_index:
+                                    self.get_history(APPLICATION_PORT, addr[0])
                                 self.history.append({"index": message.get("index"),
                                                      "sender": message.get("sender"),
                                                      "message": message.get("message")})
                                 if self.nickname != message.get('sender'):
-                                    self.event_queue.put({"type": "others_message",
+                                    self.event_queue.put({"type": "user_message",
                                                           "sender": message.get('sender'),
                                                           "content": message.get('message')})
                                 logger.debug("Received by %s: %s", message.get('sender'), str(message))
@@ -304,19 +302,15 @@ class Node:
                                               "sender": self.nickname}
                                 send_packet(conn, ack_commit)
                                 self.pending_other = None
-                                self.index = message.get('index') + 1
+                                self.next_message_index = message.get('index') + 1
                                 logger.debug("%s sent ack %s", self.nickname, ack_commit)
         except Exception:
             logger.exception("Server thread")
             self.event_queue.put({"type": "error", "content": "Server thread error"})
 
-    def request_peers(self, peer_port, socket=os_socket):
+    def request_peers(self):
         """
         Requests peers from the startup server. Sets peers.
-
-        Args:
-        peer_port (int): Application port number.
-        socket (type): Socket module.
 
         Raises:
         Exception: If the connection fails.
@@ -325,7 +319,7 @@ class Node:
         try:
             with socket(AF_INET, SOCK_STREAM) as s:
                 s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                s.connect((list(self.peer_hosts)[0], peer_port))
+                s.connect((list(self.peer_hosts)[0], APPLICATION_PORT))
                 send_packet(s, {"type": "GET_NODES", "nickname": self.nickname})
                 data = s.recv(1024)
 
@@ -345,25 +339,21 @@ class Node:
             self.event_queue.put({"type": "error", "content": "Failure on peer request"})
 
 
-    def send_address(self, peer_port, socket=os_socket):
+    def send_address(self):
         """
         Sends address to all peers and receives indexes. Sets index.
-
-        Args:
-        peer_port (int): Application port number.
-        socket (type): Socket module.
 
         Raises:
         JSONDecodeError: If the response data is invalid.
         Exception: If the connection fails.
         """
-        index = []
+        next_message_indices = []
         try:
             for peer_host in self.peer_hosts:
                 try:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                        s.connect((peer_host[0], peer_port))
+                        s.connect((peer_host[0], APPLICATION_PORT))
                         send_packet(s, {"type": "NEW_NODE", "nickname": self.nickname})
                         data = s.recv(1024)
                         try:
@@ -372,11 +362,11 @@ class Node:
                             logger.error("Invalid response data: " + data)
                             raise
 
-                        index.append(response.get("index"))
+                        next_message_indices.append(response.get("index"))
                 except Exception as exc:
                     self.handle_exception(peer_host, exc)
 
-            self.index = max(index) if index else 0
+            self.next_message_index = max(next_message_indices) if next_message_indices else 0
             self.update_peer_hosts()
 
         except Exception:
@@ -384,14 +374,12 @@ class Node:
             self.event_queue.put({"type": "error",
                                   "content": "Failure to send address to other participants"})
 
-    def get_history(self, peer_port, peer_host, socket=os_socket):
+    def get_history(self, peer_host):
         """
         Requests message history from a peer. Sets history.
 
         Args:
-        peer_port (int): Application port number.
         peer_host (str): The request is send to this peer.
-        socket (type): Socket module.
 
         Raises:
         Exception: If the connection fails.
@@ -403,26 +391,26 @@ class Node:
                 host = list(self.peer_hosts)[0]
             try:
                 with socket(AF_INET, SOCK_STREAM) as s:
-                    s.connect((host[0], peer_port))
+                    s.connect((host[0], APPLICATION_PORT))
                     send_packet(s, {"type": "GET_HISTORY"})
                     data = s.recv(1024)
 
                 response = json.loads(data)
                 old_history = self.history
                 try:
-                    last_index = old_history[-1]["index"]
+                    last_message_index = old_history[-1]["index"]
                 except IndexError:
-                    last_index = -1
+                    last_message_index = -1
                 self.history = response.get("history")
-                new_items = [item for item in self.history if item["index"] > last_index]
+                new_items = [item for item in self.history if item["index"] > last_message_index]
 
                 for message in new_items:
                     if self.nickname == message.get('sender'):
-                        self.event_queue.put({"type": "own_message",
+                        self.event_queue.put({"type": "user_message",
                                               "sender": message.get('sender'),
                                               "content": message.get('message')})
                     else:
-                        self.event_queue.put({"type": "others_message",
+                        self.event_queue.put({"type": "user_message",
                                               "sender": message.get('sender'),
                                               "content": message.get('message')})
 
@@ -438,23 +426,20 @@ class Node:
         timeout (int): The timeout for the pending message.
         """
         self.pending_other = message
-        timer = Timer(timeout, self.clear_pending_message)
+
+        def clear_pending_message(self):
+            self.pending_other = None
+
+        # TODO: This feels bit wrong (race conditions)
+        timer = Timer(timeout, clear_pending_message)
         timer.start()
 
-    def clear_pending_message(self):
-        """
-        Clears incoming pending message.
-        """
-        self.pending_other = None
-
-    def send_message(self, peer_port, type, socket=os_socket):
+    def send_message(self, type):
         """
         Issues a message. Receives acknowledgements, rejects and ack_commits.
 
         Args:
-        peer_port (int): Application port number.
         type (str): Message type.
-        socket (type): Socket module.
 
         Raises:
         Exception: If the connection fails.
@@ -464,10 +449,10 @@ class Node:
                 try:
                     with socket(AF_INET, SOCK_STREAM) as s:
                         s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                        s.connect((peer_host[0], peer_port))
+                        s.connect((peer_host[0], APPLICATION_PORT))
                         send_packet(s, {
                             "type": type,
-                            "index": self.index,
+                            "index": self.next_message_index,
                             "message": self.pending_own,
                             "sender": self.nickname
                         })
@@ -492,7 +477,7 @@ class Node:
             self.update_peer_hosts()
 
             if type == "PROPOSE":
-                self.handle_responses(peer_port)
+                self.handle_responses(APPLICATION_PORT)
                 self.acks = 0
                 self.rejects = 0
 
@@ -501,29 +486,27 @@ class Node:
             self.event_queue.put({"type": "error",
                                   "content": "Failed to propose message to peers"})
 
-    def handle_responses(self, peer_port):
+    def handle_responses(self):
         """
         Handles acknowledges and rejects. Issues a commit message.
         Issues a new propose message.
-
-        Args:
-        peer_port (int): Application port number.
         """
-        if self.acks + self.rejects == len(self.peer_hosts):
-            if self.acks > self.rejects:
-                self.send_message(peer_port, "COMMIT")
-                self.event_queue.put({"type": "own_message",
-                                      "content": self.pending_own})
-                self.history.append({"index": self.index,
-                                     "sender": self.nickname,
-                                     "message": self.pending_own})
-                self.index += 1
-                self.pending_own = None
-                return
-
-        delay = random.uniform(0.1, 0.3)
-        time.sleep(delay)
-        self.send_message(peer_port, "PROPOSE")
+        majority_agreement = self.acks > len(self.peer_hosts) / 2
+        if majority_agreement:
+            self.send_message(APPLICATION_PORT, "COMMIT")
+            self.event_queue.put({"type": "user_message",
+                                  "sender": self.nickname,
+                                  "content": self.pending_own})
+            self.history.append({"index": self.next_message_index,
+                                 "sender": self.nickname,
+                                 "message": self.pending_own})
+            self.next_message_index += 1
+            self.pending_own = None
+        else:
+            # Retry
+            delay = random.uniform(0.1, 0.3)
+            time.sleep(delay)
+            self.send_message(APPLICATION_PORT, "PROPOSE")
 
     def handle_exception(self, peer_host, exc):
         """
@@ -535,7 +518,7 @@ class Node:
         """
         if "Connection refused" in str(exc):
             self.event_queue.put({"type": "info",
-                                  "content": f"{peer_host[1]} has disconnected."})
+                                  "content": f"{peer_host[1]} has left."})
             logger.debug(f"Removing {peer_host} from set of peer hosts due to connection error.")
             self.inactive_hosts.add(peer_host)
 
@@ -570,14 +553,14 @@ if __name__ == '__main__':
         nickname = input("Set nickname: ")
         node = Node(peer_hosts, nickname)
 
-        node.request_peers(APPLICATION_PORT)
-        node.send_address(APPLICATION_PORT)
-        node.get_history(APPLICATION_PORT, None)
+        node.request_peers()
+        node.send_address()
+        node.get_history(None)
 
         # We are creating separate threads for server and client
         # so that they can run at same time. The sockets api is blocking.
         thread = Thread(target=node.ui.run, args=[], name="ui")
         thread.start()
 
-    thread = Thread(target=node.start_server, args=[APPLICATION_PORT], name="server")
+    thread = Thread(target=node.start_server, args=[], name="server")
     thread.start()
