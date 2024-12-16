@@ -300,7 +300,7 @@ class Node:
                 "sender": self.nickname
             })
         elif message.get("type") == "COMMIT":
-            if message.get("index") != self.next_message_index:
+            if message.get("index") > self.next_message_index:
                 self.get_history(addr[0])
             self.history.append({"index": message.get("index"),
                                  "sender": message.get("sender"),
