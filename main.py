@@ -263,12 +263,9 @@ class Node:
                 while True:
                     conn, addr = s.accept()
                     with conn:
-                        while True:
-                            data = conn.recv(1024)
-                            if not data:
-                                break
-                            message = json.loads(data)
-                            self.handle_request(conn, addr, message)
+                        data = conn.recv(1024)
+                        message = json.loads(data)
+                        self.handle_request(conn, addr, message)
         except Exception:
             logger.exception("Server thread")
             self.event_queue.put({"type": "error", "content": "Server thread error"})
