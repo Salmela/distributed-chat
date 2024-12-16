@@ -421,7 +421,6 @@ class Node:
         def clear_pending_message():
             self.pending_other = None
 
-        # TODO: This feels bit wrong (race conditions)
         timer = Timer(timeout, clear_pending_message)
         timer.start()
 
